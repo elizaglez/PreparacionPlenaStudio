@@ -1,47 +1,48 @@
 # Preparación Plena Studio
 
-## Entrega 4 — Primer generador del MASTER
+## Entrega 5 — Motor de prompts y validación
 
-Esta versión conecta el artículo estructurado con OpenAI y crea un primer
-borrador completo del MASTER siguiendo la metodología PPA.
+Esta versión separa las instrucciones de IA del código y añade una capa formal
+de control de calidad antes de guardar el MASTER.
 
 ### Funciones nuevas
 
-- Generación pregunta por pregunta.
-- Conservación literal de cada pregunta.
-- Respuestas estructuradas en `trabajo/master.json`.
-- Campos separados para respuesta, explicación bíblica, comparación,
-  aplicación y nota de imagen.
-- Advertencia de costos antes de llamar a la API.
-- Clave API guardada localmente en `.env`, excluida de Git.
-- Modelo configurable.
-- Exportación de `master.json` a `salidas/MASTER.docx`.
-- Procesamiento en segundo plano para mantener activa la interfaz.
+- Prompts versionados en la carpeta `prompts/`.
+- Cargador de plantillas con variables obligatorias.
+- Prompt del sistema separado del prompt de cada pregunta.
+- Validación automática de `master.json`.
+- Comprobación de que todas las preguntas tengan respuesta.
+- Verificación de que las preguntas se conserven literalmente.
+- Detección de respuestas vacías, duplicadas o huérfanas.
+- Advertencias cuando se pierden referencias bíblicas.
+- Informe de calidad en `trabajo/master_validacion.json`.
+- La regeneración de una respuesta también se valida antes de guardarse.
 
-### Flujo
+### Flujo actualizado
 
 ```text
-PDF
-  ↓
-trabajo/articulo.json
-  ↓
-OpenAI + metodología PPA
-  ↓
-trabajo/master.json
-  ↓
-salidas/MASTER.docx
+articulo.json
+      ↓
+prompts/system.md + prompts/answer.md
+      ↓
+OpenAI
+      ↓
+MASTER provisional
+      ↓
+validación estructural
+      ↓
+master.json + master_validacion.json
 ```
 
-### Configuración inicial
+### Archivos de prompts
 
-1. Abre **Configuración**.
-2. Escribe tu clave de OpenAI.
-3. Deja `gpt-5-mini` o escribe otro modelo disponible para tu cuenta.
-4. Guarda la configuración.
-5. Abre un proyecto, analiza el artículo y pulsa **Generar MASTER**.
+```text
+prompts/
+├── system.md
+└── answer.md
+```
 
-La aplicación usa la API oficial de OpenAI. El uso de la API puede generar
-cargos independientes de una suscripción de ChatGPT.
+Los prompts pueden revisarse y versionarse en Git sin modificar el código Python.
 
 ### Ejecutar
 
@@ -58,5 +59,5 @@ python main.py
 python -m unittest discover -s tests
 ```
 
-Esta entrega no transcribe todavía el MP3. El audio se conserva como fuente
-del proyecto, pero no se envía ni se interpreta durante la generación.
+La aplicación no guarda `master.json` cuando existen errores estructurales.
+Las advertencias no bloquean el proceso, pero quedan registradas para revisión.

@@ -111,7 +111,7 @@ class ProjectWorkspace(QWidget):
                     (work / "master.json").read_text(encoding="utf-8")
                 )
                 self._show_master(master)
-                self.status.setText("MASTER generado y listo para revisar.")
+                self.status.setText("MASTER generado, validado y listo para revisar.")
                 return
             except Exception:
                 pass
@@ -180,7 +180,7 @@ class ProjectWorkspace(QWidget):
                 "párrafos y referencias bíblicas."
             )
         else:
-            self.status.setText("MASTER generado y listo para revisar.")
+            self.status.setText("MASTER generado, validado y listo para revisar.")
             self._load_and_show_master()
             message = (
                 "Listo. Se creó trabajo/master.json. "
@@ -241,6 +241,7 @@ class ProjectWorkspace(QWidget):
             master.get("title", "Sin título"),
             f"Modelo: {master.get('model', '—')}",
             f"Respuestas: {len(master.get('answers', []))}",
+            "Validación: superada",
             "",
         ]
         for item in master.get("answers", []):

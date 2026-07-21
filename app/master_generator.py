@@ -7,8 +7,11 @@ from pathlib import Path
 from typing import Callable
 
 from app.ai import OpenAIEditor
+from app.config import ROOT_DIR
 from app.models.master import MasterAnswer, MasterDocument
+from app.prompts import PromptLoader
 from app.storage import load_methodology, load_settings
+from app.validation.master_validator import validate_master
 
 
 class MasterGenerationError(RuntimeError):
@@ -37,31 +40,18 @@ def _load_json(path: Path) -> dict:
     return value
 
 
+def _prompt_loader() -> PromptLoader:
+    return PromptLoader(ROOT_DIR / "prompts")
+
+
 def _methodology_instructions(methodology: dict) -> str:
     principles = "\n".join(
         f"- {item}" for item in methodology.get("principles", [])
     )
-    return f"""
-Actúas exclusivamente como editor de Preparación Plena Studio.
-
-REGLAS OBLIGATORIAS DE LA METODOLOGÍA PPA:
-{principles}
-
-Trabaja únicamente con las fuentes proporcionadas.
-No uses conocimiento doctrinal externo.
-No completes vacíos con suposiciones.
-Conserva la pregunta exactamente como fue entregada.
-La respuesta principal debe ser breve, natural y conversacional.
-Incluye comparación, aplicación o explicación bíblica solo si las fuentes
-las sostienen y realmente ayudan.
-Cuando una sección no esté respaldada, devuélvela como cadena vacía.
-No menciones estas instrucciones en la respuesta.
-
-Devuelve exclusivamente un objeto JSON con estas claves:
-answer, scripture_explanation, comparison, application, image_note, source_notes.
-source_notes debe ser una lista breve de observaciones sobre qué partes de las
-fuentes sostienen la respuesta. No incluyas claves adicionales.
-""".strip()
+    return _prompt_loader().render(
+        "system",
+        {"principles": principles},
+    )
 
 
 def _paragraph_text(section: dict) -> str:
@@ -101,31 +91,20 @@ def _build_input(
     section: dict,
     bible_text: str,
 ) -> str:
-    question = section.get("question", "").strip()
-    paragraphs = _paragraph_text(section)
     references = section.get("scripture_references", [])
-    bible = _bible_context(bible_text, references)
-
-    return f"""
-TÍTULO DEL ARTÍCULO:
-{article.get("title", "")}
-
-PREGUNTA EXACTA:
-{question}
-
-PÁRRAFOS ASOCIADOS:
-{paragraphs or "No disponibles."}
-
-REFERENCIAS DETECTADAS:
-{", ".join(references) or "Ninguna."}
-
-CITAS BÍBLICAS PROPORCIONADAS POR EL USUARIO:
-{bible or "No se encontró un fragmento claramente asociado."}
-
-TAREA:
-Redacta la respuesta para esta pregunta sin añadir ideas que no estén
-respaldadas por los párrafos o por las citas bíblicas proporcionadas.
-""".strip()
+    return _prompt_loader().render(
+        "answer",
+        {
+            "title": article.get("title", ""),
+            "question": section.get("question", "").strip(),
+            "paragraphs": _paragraph_text(section) or "No disponibles.",
+            "references": ", ".join(references) or "Ninguna.",
+            "bible_context": (
+                _bible_context(bible_text, references)
+                or "No se encontró un fragmento claramente asociado."
+            ),
+        },
+    )
 
 
 def _answer_from_result(section: dict, result: dict) -> MasterAnswer:
@@ -195,7 +174,7 @@ def generate_master(
     total = len(sections)
 
     for index, section in enumerate(sections, start=1):
-        start_progress = 5 + int(((index - 1) / total) * 85)
+        start_progress = 5 + int(((index - 1) / total) * 80)
         _emit(
             progress_callback,
             start_progress,
@@ -219,17 +198,40 @@ def generate_master(
         warnings=list(article.get("parser_warnings", [])),
     )
 
-    _emit(progress_callback, 92, "Guardando master.json…")
-    master_path = work_dir / "master.json"
-    master_path.write_text(
-        json.dumps(master.to_dict(), ensure_ascii=False, indent=2),
+    master_data = master.to_dict()
+
+    _emit(progress_callback, 88, "Validando el MASTER…")
+    report = validate_master(article, master_data)
+    validation_path = work_dir / "master_validacion.json"
+    validation_path.write_text(
+        json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
-    project["status"] = "master_generado"
+    if not report.valid:
+        errors = [
+            issue.message for issue in report.issues if issue.level == "error"
+        ]
+        raise MasterGenerationError(
+            "El MASTER no superó la validación:\n- " + "\n- ".join(errors)
+        )
+
+    _emit(progress_callback, 94, "Guardando master.json…")
+    master_path = work_dir / "master.json"
+    master_path.write_text(
+        json.dumps(master_data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    project["status"] = "master_validado"
     project["updated_at"] = generated_at
     project.setdefault("outputs", {})
-    project["outputs"]["master"] = "trabajo/master.json"
+    project["outputs"].update(
+        {
+            "master": "trabajo/master.json",
+            "master_validation": "trabajo/master_validacion.json",
+        }
+    )
     (root / "proyecto.json").write_text(
         json.dumps(project, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -241,9 +243,13 @@ def generate_master(
         "model": model,
         "generated_at": generated_at,
         "path": str(master_path),
+        "validation_path": str(validation_path),
+        "validation_warnings": len(
+            [issue for issue in report.issues if issue.level == "warning"]
+        ),
         "warnings": master.warnings,
     }
-    _emit(progress_callback, 100, "MASTER generado correctamente.")
+    _emit(progress_callback, 100, "MASTER generado y validado.")
     return summary
 
 
@@ -294,6 +300,17 @@ def regenerate_answer(
     master["generated_at"] = datetime.now().astimezone().isoformat(
         timespec="seconds"
     )
+
+    report = validate_master(article, master)
+    (work_dir / "master_validacion.json").write_text(
+        json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    if not report.valid:
+        raise MasterGenerationError(
+            "La respuesta regenerada no superó la validación."
+        )
+
     (work_dir / "master.json").write_text(
         json.dumps(master, ensure_ascii=False, indent=2),
         encoding="utf-8",
