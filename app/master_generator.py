@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
-import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 from app.ai import OpenAIEditor
 from app.config import ROOT_DIR
+from app.context import ContextBuilder, QuestionContext
+from app.logging import GenerationLog
 from app.models.master import MasterAnswer, MasterDocument
 from app.prompts import PromptLoader
 from app.storage import load_methodology, load_settings
@@ -35,6 +37,7 @@ def _load_json(path: Path) -> dict:
         ) from exc
     except json.JSONDecodeError as exc:
         raise MasterGenerationError(f"{path.name} contiene JSON inválido.") from exc
+
     if not isinstance(value, dict):
         raise MasterGenerationError(f"{path.name} no tiene la estructura esperada.")
     return value
@@ -48,59 +51,25 @@ def _methodology_instructions(methodology: dict) -> str:
     principles = "\n".join(
         f"- {item}" for item in methodology.get("principles", [])
     )
-    return _prompt_loader().render(
-        "system",
-        {"principles": principles},
-    )
+    return _prompt_loader().render("system", {"principles": principles})
 
 
-def _paragraph_text(section: dict) -> str:
-    blocks = []
-    for paragraph in section.get("paragraphs", []):
-        number = paragraph.get("number")
-        prefix = f"Párrafo {number}: " if number is not None else ""
-        blocks.append(prefix + paragraph.get("text", "").strip())
-    return "\n".join(blocks)
-
-
-def _bible_context(bible_text: str, references: list[str]) -> str:
-    if not bible_text.strip() or not references:
-        return ""
-
-    lines = [line.strip() for line in bible_text.splitlines() if line.strip()]
-    selected: list[str] = []
-    for reference in references:
-        book_chapter = reference.split(":")[0].lower()
-        book = re.sub(r"\s+\d+$", "", book_chapter).strip()
-        chapter = book_chapter.removeprefix(book).strip()
-        terms = [reference.lower(), book_chapter, f"{book} {chapter}".strip()]
-        for index, line in enumerate(lines):
-            low = line.lower()
-            if any(term and term in low for term in terms):
-                start = max(0, index - 1)
-                end = min(len(lines), index + 3)
-                excerpt = " ".join(lines[start:end])
-                if excerpt not in selected:
-                    selected.append(excerpt)
-                break
-    return "\n".join(selected)
-
-
-def _build_input(
-    article: dict,
-    section: dict,
-    bible_text: str,
-) -> str:
-    references = section.get("scripture_references", [])
+def _build_input(context: QuestionContext) -> str:
     return _prompt_loader().render(
         "answer",
         {
-            "title": article.get("title", ""),
-            "question": section.get("question", "").strip(),
-            "paragraphs": _paragraph_text(section) or "No disponibles.",
-            "references": ", ".join(references) or "Ninguna.",
+            "title": context.article_title,
+            "introduction": context.article_introduction or "No disponible.",
+            "heading": context.heading or "No disponible.",
+            "previous_question": context.previous_question or "No disponible.",
+            "question": context.question,
+            "next_question": context.next_question or "No disponible.",
+            "paragraphs": context.paragraph_text or "No disponibles.",
+            "references": (
+                ", ".join(context.scripture_references) or "Ninguna."
+            ),
             "bible_context": (
-                _bible_context(bible_text, references)
+                context.bible_context
                 or "No se encontró un fragmento claramente asociado."
             ),
         },
@@ -108,9 +77,11 @@ def _build_input(
 
 
 def _answer_from_result(section: dict, result: dict) -> MasterAnswer:
-    question = section.get("question", "").strip()
+    question = str(section.get("question", "")).strip()
     if not question:
-        raise MasterGenerationError("Una sección del artículo no contiene pregunta.")
+        raise MasterGenerationError(
+            "Una sección del artículo no contiene pregunta."
+        )
 
     answer = str(result.get("answer", "")).strip()
     if not answer:
@@ -127,11 +98,13 @@ def _answer_from_result(section: dict, result: dict) -> MasterAnswer:
         question=question,
         answer=answer,
         paragraph_numbers=[
-            int(value) for value in section.get("paragraph_numbers", [])
+            int(value)
+            for value in section.get("paragraph_numbers", [])
             if str(value).isdigit()
         ],
         scriptures=[
-            str(value) for value in section.get("scripture_references", [])
+            str(value)
+            for value in section.get("scripture_references", [])
         ],
         scripture_explanation=str(
             result.get("scripture_explanation", "")
@@ -139,8 +112,50 @@ def _answer_from_result(section: dict, result: dict) -> MasterAnswer:
         comparison=str(result.get("comparison", "")).strip(),
         application=str(result.get("application", "")).strip(),
         image_note=str(result.get("image_note", "")).strip(),
-        source_notes=[str(value).strip() for value in notes if str(value).strip()],
+        source_notes=[
+            str(value).strip()
+            for value in notes
+            if str(value).strip()
+        ],
     )
+
+
+def _generate_one(
+    *,
+    editor: OpenAIEditor,
+    instructions: str,
+    article: dict,
+    context_builder: ContextBuilder,
+    section_index: int,
+    model: str,
+    log: GenerationLog,
+    operation: str,
+) -> MasterAnswer:
+    section = article["sections"][section_index]
+    context = context_builder.build(section_index)
+    input_text = _build_input(context)
+
+    started = time.perf_counter()
+    result = editor.generate_json(
+        instructions=instructions,
+        input_text=input_text,
+    )
+    duration = time.perf_counter() - started
+
+    answer = _answer_from_result(section, result)
+
+    log.record(
+        question_number=answer.number,
+        question=answer.question,
+        model=model,
+        instructions=instructions,
+        input_text=input_text,
+        output=result,
+        duration_seconds=duration,
+        operation=operation,
+        warnings=[],
+    )
+    return answer
 
 
 def generate_master(
@@ -161,30 +176,41 @@ def generate_master(
 
     bible_path = work_dir / "citas_extraidas.txt"
     bible_text = (
-        bible_path.read_text(encoding="utf-8") if bible_path.is_file() else ""
+        bible_path.read_text(encoding="utf-8")
+        if bible_path.is_file()
+        else ""
     )
 
     settings = load_settings()
     model = settings.get("openai_model", "gpt-5-mini")
     methodology = load_methodology()
-    editor = OpenAIEditor(model=model)
     instructions = _methodology_instructions(methodology)
+    editor = OpenAIEditor(model=model)
+    context_builder = ContextBuilder(article, bible_text)
+    generation_log = GenerationLog(root)
 
     answers: list[MasterAnswer] = []
     total = len(sections)
 
-    for index, section in enumerate(sections, start=1):
-        start_progress = 5 + int(((index - 1) / total) * 80)
+    for index in range(total):
+        progress = 5 + int((index / total) * 80)
         _emit(
             progress_callback,
-            start_progress,
-            f"Generando respuesta {index} de {total}…",
+            progress,
+            f"Generando respuesta {index + 1} de {total}…",
         )
-        result = editor.generate_json(
-            instructions=instructions,
-            input_text=_build_input(article, section, bible_text),
+        answers.append(
+            _generate_one(
+                editor=editor,
+                instructions=instructions,
+                article=article,
+                context_builder=context_builder,
+                section_index=index,
+                model=model,
+                log=generation_log,
+                operation="generate",
+            )
         )
-        answers.append(_answer_from_result(section, result))
 
     generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
     master = MasterDocument(
@@ -210,10 +236,13 @@ def generate_master(
 
     if not report.valid:
         errors = [
-            issue.message for issue in report.issues if issue.level == "error"
+            issue.message
+            for issue in report.issues
+            if issue.level == "error"
         ]
         raise MasterGenerationError(
-            "El MASTER no superó la validación:\n- " + "\n- ".join(errors)
+            "El MASTER no superó la validación:\n- "
+            + "\n- ".join(errors)
         )
 
     _emit(progress_callback, 94, "Guardando master.json…")
@@ -230,6 +259,7 @@ def generate_master(
         {
             "master": "trabajo/master.json",
             "master_validation": "trabajo/master_validacion.json",
+            "generation_log": "trabajo/historial_generacion",
         }
     )
     (root / "proyecto.json").write_text(
@@ -244,12 +274,17 @@ def generate_master(
         "generated_at": generated_at,
         "path": str(master_path),
         "validation_path": str(validation_path),
+        "generation_log_path": str(generation_log.log_dir),
         "validation_warnings": len(
-            [issue for issue in report.issues if issue.level == "warning"]
+            [
+                issue
+                for issue in report.issues
+                if issue.level == "warning"
+            ]
         ),
         "warnings": master.warnings,
     }
-    _emit(progress_callback, 100, "MASTER generado y validado.")
+    _emit(progress_callback, 100, "MASTER generado, validado y registrado.")
     return summary
 
 
@@ -263,27 +298,41 @@ def regenerate_answer(
     master = _load_json(work_dir / "master.json")
 
     sections = article.get("sections", [])
-    section = next(
-        (item for item in sections if int(item.get("number", 0)) == answer_number),
+    section_index = next(
+        (
+            index
+            for index, item in enumerate(sections)
+            if int(item.get("number", 0)) == answer_number
+        ),
         None,
     )
-    if section is None:
+    if section_index is None:
         raise MasterGenerationError(
             f"No existe la pregunta número {answer_number}."
         )
 
     bible_path = work_dir / "citas_extraidas.txt"
-    bible_text = bible_path.read_text(encoding="utf-8") if bible_path.is_file() else ""
+    bible_text = (
+        bible_path.read_text(encoding="utf-8")
+        if bible_path.is_file()
+        else ""
+    )
     settings = load_settings()
     model = settings.get("openai_model", "gpt-5-mini")
     methodology = load_methodology()
+    instructions = _methodology_instructions(methodology)
     editor = OpenAIEditor(model=model)
 
-    result = editor.generate_json(
-        instructions=_methodology_instructions(methodology),
-        input_text=_build_input(article, section, bible_text),
-    )
-    replacement = _answer_from_result(section, result).to_dict()
+    replacement = _generate_one(
+        editor=editor,
+        instructions=instructions,
+        article=article,
+        context_builder=ContextBuilder(article, bible_text),
+        section_index=section_index,
+        model=model,
+        log=GenerationLog(root),
+        operation="regenerate",
+    ).to_dict()
 
     answers = master.get("answers", [])
     replaced = False
@@ -292,6 +341,7 @@ def regenerate_answer(
             answers[index] = replacement
             replaced = True
             break
+
     if not replaced:
         answers.append(replacement)
         answers.sort(key=lambda item: int(item.get("number", 0)))

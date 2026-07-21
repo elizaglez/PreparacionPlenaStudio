@@ -1,33 +1,49 @@
 # Preparación Plena Studio
 
-## Entrega 6 — Editor inteligente del MASTER
+## Entrega 7 — Motor de contexto y trazabilidad
 
-Esta versión convierte el generador en un flujo de revisión pregunta por
-pregunta.
+Esta versión mejora la calidad de cada respuesta y registra cómo fue generada.
 
 ### Funciones nuevas
 
-- Editor visual de cada respuesta.
-- Edición independiente de respuesta, explicación bíblica, comparación,
-  aplicación y nota de imagen.
-- Estados: pendiente, revisada, aprobada, regenerada y editada.
-- Regeneración de una sola respuesta.
-- Guardado en `trabajo/master.json`.
-- Contador general de respuestas revisadas y aprobadas.
-- Compatibilidad con MASTER anteriores sin campo `status`.
-
-### Flujo
+- Motor de contexto por pregunta.
+- Inclusión automática de:
+  - título;
+  - introducción;
+  - subtítulo;
+  - párrafos asociados;
+  - referencias bíblicas;
+  - fragmentos bíblicos disponibles;
+  - pregunta anterior;
+  - pregunta siguiente.
+- El contexto vecino se usa solo para continuidad.
+- Registro individual de cada generación y regeneración.
+- Historial con:
+  - fecha y hora;
+  - modelo utilizado;
+  - prompt;
+  - contexto enviado;
+  - salida recibida;
+  - duración;
+  - operación realizada.
+- Historial guardado en:
 
 ```text
-master.json
-    ↓
-Editor del MASTER
-    ↓
-Editar / regenerar / aprobar
-    ↓
-master.json actualizado
-    ↓
-Exportación
+trabajo/historial_generacion/
+```
+
+### Flujo actualizado
+
+```text
+articulo.json + citas_extraidas.txt
+              ↓
+       Motor de contexto
+              ↓
+         Prompt final
+              ↓
+            OpenAI
+              ↓
+    master.json + historial
 ```
 
 ### Ejecutar
