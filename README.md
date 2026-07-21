@@ -1,22 +1,30 @@
 # Preparación Plena Studio
 
-## Entrega 2 — Motor de lectura de fuentes
+## Entrega 3 — Article Parser
 
-Esta versión incluye:
+Esta versión añade el primer módulo inteligente específico del proyecto.
 
-- Interfaz de escritorio con navegación lateral.
-- Creación y apertura de proyectos.
-- Selección y copia de PDF, MP3 y citas bíblicas.
-- Historial local y configuración.
-- Metodología PPA persistente.
-- Lectura real de PDF mediante PyMuPDF.
-- Detección preliminar de preguntas y referencias bíblicas.
-- Lectura de citas desde TXT, DOCX o PDF.
-- Validación y registro del audio MP3, WAV o M4A.
-- Procesamiento en segundo plano con barra de progreso.
-- Generación de archivos de diagnóstico en `trabajo/`.
+### Funciones nuevas
 
-## Ejecutar en Windows
+- Convierte el texto extraído del PDF en `trabajo/articulo.json`.
+- Detecta título, preguntas, párrafos numerados y subtítulos.
+- Asocia preguntas con sus párrafos.
+- Normaliza referencias bíblicas abreviadas.
+- Detecta párrafos sin asignar.
+- Muestra advertencias cuando la estructura del PDF no es suficientemente clara.
+- Mantiene el procesamiento en segundo plano para no congelar la interfaz.
+
+### Archivos generados
+
+```text
+trabajo/
+├── pdf_extraido.txt
+├── citas_extraidas.txt
+├── articulo.json
+└── fuentes_resumen.json
+```
+
+### Ejecutar en Windows
 
 ```bash
 python -m venv .venv
@@ -25,19 +33,10 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Resultado del procesamiento
+### Pruebas
 
-Al pulsar **PROCESAR FUENTES**, se crean:
-
-```text
-trabajo/
-├── pdf_extraido.txt
-├── citas_extraidas.txt
-└── fuentes_resumen.json
+```bash
+python -m unittest discover -s tests
 ```
 
-La transcripción del audio y la generación del MASTER se añadirán en las siguientes entregas.
-
-## Importante
-
-Los PDF escaneados que no tengan texto seleccionable todavía no pueden procesarse. La aplicación los detecta y muestra un aviso claro.
+El parser utiliza reglas conservadoras. Cuando no puede demostrar una asociación entre pregunta y párrafo, registra una advertencia en vez de inventarla.

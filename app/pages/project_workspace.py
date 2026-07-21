@@ -44,17 +44,17 @@ class ProjectWorkspace(QWidget):
         source_layout.addWidget(self.audio)
         source_layout.addWidget(self.bible)
 
-        self.generate = QPushButton("PROCESAR FUENTES")
+        self.generate = QPushButton("ANALIZAR Y ESTRUCTURAR ARTÍCULO")
         self.generate.setObjectName("PrimaryButton")
         self.generate.setEnabled(False)
         self.generate.clicked.connect(self.process_sources)
 
-        diagnostics_group = QGroupBox("Diagnóstico")
+        diagnostics_group = QGroupBox("Diagnóstico del artículo")
         diagnostics_layout = QVBoxLayout(diagnostics_group)
         self.diagnostics = QPlainTextEdit()
         self.diagnostics.setReadOnly(True)
         self.diagnostics.setPlaceholderText(
-            "Aquí aparecerá el resultado de la lectura del PDF, las citas y el audio."
+            "Aquí aparecerá la estructura detectada del artículo."
         )
         diagnostics_layout.addWidget(self.diagnostics)
 
@@ -72,7 +72,7 @@ class ProjectWorkspace(QWidget):
         self.project = project
         self.title.setText(project.get("name", "Proyecto"))
         self.path.setText(project.get("root", ""))
-        self.status.setText("Proyecto listo para procesar las fuentes.")
+        self.status.setText("Proyecto listo para analizar el artículo.")
         sources = project.get("sources", {})
         self.pdf.setText("PDF: " + sources.get("pdf", "—"))
         self.audio.setText("Audio: " + sources.get("audio", "—"))
@@ -83,7 +83,9 @@ class ProjectWorkspace(QWidget):
     def _load_existing_diagnostics(self) -> None:
         if not self.project:
             return
-        summary_path = Path(self.project["root"]) / "trabajo" / "fuentes_resumen.json"
+        summary_path = (
+            Path(self.project["root"]) / "trabajo" / "fuentes_resumen.json"
+        )
         if summary_path.is_file():
             try:
                 data = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -121,21 +123,21 @@ class ProjectWorkspace(QWidget):
         self.processing_dialog.exec()
 
     def _processing_finished(self, summary: dict) -> None:
-        self.status.setText("Fuentes procesadas correctamente.")
+        self.status.setText("Artículo analizado y estructurado.")
         self._show_summary(summary)
         if self.processing_dialog:
             self.processing_dialog.mark_finished(
-                "Listo. Se crearon pdf_extraido.txt, citas_extraidas.txt "
-                "y fuentes_resumen.json."
+                "Listo. Se creó trabajo/articulo.json con preguntas, "
+                "párrafos y referencias bíblicas."
             )
 
     def _processing_failed(self, message: str) -> None:
-        self.status.setText("No se pudieron procesar las fuentes.")
+        self.status.setText("No se pudo estructurar el artículo.")
         if self.processing_dialog:
             self.processing_dialog.mark_failed(message)
         QMessageBox.critical(
             self,
-            "Error al procesar las fuentes",
+            "Error al analizar el artículo",
             message,
         )
 
@@ -146,17 +148,28 @@ class ProjectWorkspace(QWidget):
 
     def _show_summary(self, summary: dict) -> None:
         d = summary.get("diagnostics", {})
+        article = summary.get("article", {})
+        warnings = article.get("warnings", [])
+
         lines = [
+            f"Título detectado: {article.get('title', '—')}",
             f"Páginas del PDF: {d.get('pdf_pages', 0)}",
-            f"Caracteres extraídos del PDF: {d.get('pdf_characters', 0)}",
+            f"Caracteres extraídos: {d.get('pdf_characters', 0)}",
             f"Preguntas detectadas: {d.get('detected_questions', 0)}",
+            f"Secciones estructuradas: {d.get('structured_sections', 0)}",
             f"Referencias bíblicas detectadas: {d.get('detected_scripture_references', 0)}",
-            f"Caracteres de citas bíblicas: {d.get('bible_characters', 0)}",
-            f"Transcripción del audio: {d.get('audio_transcription', 'pendiente')}",
+            f"Párrafos sin asignar: {article.get('unassigned_paragraphs', 0)}",
+            f"Advertencias del parser: {d.get('parser_warnings', 0)}",
             "",
             "Archivos creados:",
             "• trabajo/pdf_extraido.txt",
             "• trabajo/citas_extraidas.txt",
+            "• trabajo/articulo.json",
             "• trabajo/fuentes_resumen.json",
         ]
+
+        if warnings:
+            lines.extend(["", "Advertencias:"])
+            lines.extend(f"• {warning}" for warning in warnings)
+
         self.diagnostics.setPlainText("\n".join(lines))
