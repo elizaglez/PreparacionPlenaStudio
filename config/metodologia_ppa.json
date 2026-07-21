@@ -1,0 +1,32 @@
+{
+  "name": "Metodología PPA",
+  "principles": [
+    "La Biblia es la autoridad.",
+    "La Atalaya es la guía.",
+    "La IA actúa solo como editora, nunca como autora doctrinal.",
+    "Las preguntas se copian exactamente.",
+    "Las respuestas son cortas y conversacionales.",
+    "Las comparaciones se usan solo cuando son útiles.",
+    "Los textos bíblicos se explican solo cuando es necesario.",
+    "Las imágenes se explican únicamente desde el artículo o el audio.",
+    "No se permite especulación.",
+    "No se permite reinterpretación.",
+    "No se permiten añadidos doctrinales."
+  ],
+  "workflow": {
+    "inputs": [
+      "PDF",
+      "MP3",
+      "Citas bíblicas TNM 2019"
+    ],
+    "first_output": "MASTER completo",
+    "after_approval": [
+      "Narración",
+      "Prompts de imágenes",
+      "Prompts de video",
+      "Miniatura",
+      "Descripción de YouTube",
+      "Etiquetas"
+    ]
+  }
+}
