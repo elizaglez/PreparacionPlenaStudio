@@ -1,7 +1,7 @@
 import json
 from app.config import CONFIG_DIR, DATA_DIR, PROJECTS_DIR, SETTINGS_FILE, METHODOLOGY_FILE, RECENT_PROJECTS_FILE
 
-DEFAULT_SETTINGS = {"default_projects_folder": str(PROJECTS_DIR), "theme":"dark", "language":"es"}
+DEFAULT_SETTINGS = {"default_projects_folder": str(PROJECTS_DIR), "theme":"dark", "language":"es", "openai_model":"gpt-5-mini"}
 
 DEFAULT_METHODOLOGY = {
     "name":"Metodología PPA",

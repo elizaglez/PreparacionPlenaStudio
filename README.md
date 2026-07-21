@@ -1,30 +1,49 @@
 # Preparación Plena Studio
 
-## Entrega 3 — Article Parser
+## Entrega 4 — Primer generador del MASTER
 
-Esta versión añade el primer módulo inteligente específico del proyecto.
+Esta versión conecta el artículo estructurado con OpenAI y crea un primer
+borrador completo del MASTER siguiendo la metodología PPA.
 
 ### Funciones nuevas
 
-- Convierte el texto extraído del PDF en `trabajo/articulo.json`.
-- Detecta título, preguntas, párrafos numerados y subtítulos.
-- Asocia preguntas con sus párrafos.
-- Normaliza referencias bíblicas abreviadas.
-- Detecta párrafos sin asignar.
-- Muestra advertencias cuando la estructura del PDF no es suficientemente clara.
-- Mantiene el procesamiento en segundo plano para no congelar la interfaz.
+- Generación pregunta por pregunta.
+- Conservación literal de cada pregunta.
+- Respuestas estructuradas en `trabajo/master.json`.
+- Campos separados para respuesta, explicación bíblica, comparación,
+  aplicación y nota de imagen.
+- Advertencia de costos antes de llamar a la API.
+- Clave API guardada localmente en `.env`, excluida de Git.
+- Modelo configurable.
+- Exportación de `master.json` a `salidas/MASTER.docx`.
+- Procesamiento en segundo plano para mantener activa la interfaz.
 
-### Archivos generados
+### Flujo
 
 ```text
-trabajo/
-├── pdf_extraido.txt
-├── citas_extraidas.txt
-├── articulo.json
-└── fuentes_resumen.json
+PDF
+  ↓
+trabajo/articulo.json
+  ↓
+OpenAI + metodología PPA
+  ↓
+trabajo/master.json
+  ↓
+salidas/MASTER.docx
 ```
 
-### Ejecutar en Windows
+### Configuración inicial
+
+1. Abre **Configuración**.
+2. Escribe tu clave de OpenAI.
+3. Deja `gpt-5-mini` o escribe otro modelo disponible para tu cuenta.
+4. Guarda la configuración.
+5. Abre un proyecto, analiza el artículo y pulsa **Generar MASTER**.
+
+La aplicación usa la API oficial de OpenAI. El uso de la API puede generar
+cargos independientes de una suscripción de ChatGPT.
+
+### Ejecutar
 
 ```bash
 python -m venv .venv
@@ -39,4 +58,5 @@ python main.py
 python -m unittest discover -s tests
 ```
 
-El parser utiliza reglas conservadoras. Cuando no puede demostrar una asociación entre pregunta y párrafo, registra una advertencia en vez de inventarla.
+Esta entrega no transcribe todavía el MP3. El audio se conserva como fuente
+del proyecto, pero no se envía ni se interpreta durante la generación.
