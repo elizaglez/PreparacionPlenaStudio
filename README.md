@@ -1,48 +1,34 @@
 # Preparación Plena Studio
 
-## Entrega 5 — Motor de prompts y validación
+## Entrega 6 — Editor inteligente del MASTER
 
-Esta versión separa las instrucciones de IA del código y añade una capa formal
-de control de calidad antes de guardar el MASTER.
+Esta versión convierte el generador en un flujo de revisión pregunta por
+pregunta.
 
 ### Funciones nuevas
 
-- Prompts versionados en la carpeta `prompts/`.
-- Cargador de plantillas con variables obligatorias.
-- Prompt del sistema separado del prompt de cada pregunta.
-- Validación automática de `master.json`.
-- Comprobación de que todas las preguntas tengan respuesta.
-- Verificación de que las preguntas se conserven literalmente.
-- Detección de respuestas vacías, duplicadas o huérfanas.
-- Advertencias cuando se pierden referencias bíblicas.
-- Informe de calidad en `trabajo/master_validacion.json`.
-- La regeneración de una respuesta también se valida antes de guardarse.
+- Editor visual de cada respuesta.
+- Edición independiente de respuesta, explicación bíblica, comparación,
+  aplicación y nota de imagen.
+- Estados: pendiente, revisada, aprobada, regenerada y editada.
+- Regeneración de una sola respuesta.
+- Guardado en `trabajo/master.json`.
+- Contador general de respuestas revisadas y aprobadas.
+- Compatibilidad con MASTER anteriores sin campo `status`.
 
-### Flujo actualizado
+### Flujo
 
 ```text
-articulo.json
-      ↓
-prompts/system.md + prompts/answer.md
-      ↓
-OpenAI
-      ↓
-MASTER provisional
-      ↓
-validación estructural
-      ↓
-master.json + master_validacion.json
+master.json
+    ↓
+Editor del MASTER
+    ↓
+Editar / regenerar / aprobar
+    ↓
+master.json actualizado
+    ↓
+Exportación
 ```
-
-### Archivos de prompts
-
-```text
-prompts/
-├── system.md
-└── answer.md
-```
-
-Los prompts pueden revisarse y versionarse en Git sin modificar el código Python.
 
 ### Ejecutar
 
@@ -58,6 +44,3 @@ python main.py
 ```bash
 python -m unittest discover -s tests
 ```
-
-La aplicación no guarda `master.json` cuando existen errores estructurales.
-Las advertencias no bloquean el proceso, pero quedan registradas para revisión.
