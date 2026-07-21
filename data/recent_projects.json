@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Proyecto prueba",
+    "version": "0.1.0",
+    "status": "nuevo",
+    "created_at": "2026-07-21T03:23:11+00:00",
+    "updated_at": "2026-07-21T03:23:11+00:00",
+    "root": "/tmp/tmpy6dow62w/projects/Proyecto prueba",
+    "sources": {
+      "pdf": "fuente/articulo.pdf",
+      "audio": "fuente/audio.mp3",
+      "bible": "fuente/citas.txt"
+    },
+    "outputs": {}
+  },
+  {
+    "name": "Proyecto prueba",
+    "version": "0.1.0",
+    "status": "nuevo",
+    "created_at": "2026-07-21T03:17:12+00:00",
+    "updated_at": "2026-07-21T03:17:12+00:00",
+    "root": "/tmp/tmpt5y8u_lv/projects/Proyecto prueba",
+    "sources": {
+      "pdf": "fuente/articulo.pdf",
+      "audio": "fuente/audio.mp3",
+      "bible": "fuente/citas.txt"
+    },
+    "outputs": {}
+  },
+  {
+    "name": "Proyecto prueba",
+    "version": "0.1.0",
+    "status": "nuevo",
+    "created_at": "2026-07-21T03:06:00+00:00",
+    "updated_at": "2026-07-21T03:06:00+00:00",
+    "root": "/tmp/tmpbshrwjtw/projects/Proyecto prueba",
+    "sources": {
+      "pdf": "fuente/articulo.pdf",
+      "audio": "fuente/audio.mp3",
+      "bible": "fuente/citas.txt"
+    },
+    "outputs": {}
+  },
+  {
+    "name": "Proyecto prueba",
+    "version": "0.1.0",
+    "status": "nuevo",
+    "created_at": "2026-07-21T03:01:30+00:00",
+    "updated_at": "2026-07-21T03:01:30+00:00",
+    "root": "/tmp/tmpv3se3egr/projects/Proyecto prueba",
+    "sources": {
+      "pdf": "fuente/articulo.pdf",
+      "audio": "fuente/audio.mp3",
+      "bible": "fuente/citas.txt"
+    },
+    "outputs": {}
+  },
+  {
+    "name": "Proyecto prueba",
+    "version": "0.1.0",
+    "status": "nuevo",
+    "created_at": "2026-07-21T03:01:15+00:00",
+    "updated_at": "2026-07-21T03:01:15+00:00",
+    "root": "/tmp/tmpl4v52_zv/projects/Proyecto prueba",
+    "sources": {
+      "pdf": "fuente/articulo.pdf",
+      "audio": "fuente/audio.mp3",
+      "bible": "fuente/citas.txt"
+    },
+    "outputs": {}
+  },
+  {
+    "name": "Proyecto prueba",
+    "version": "0.1.0",
+    "status": "nuevo",
+    "created_at": "2026-07-21T03:00:52+00:00",
+    "updated_at": "2026-07-21T03:00:52+00:00",
+    "root": "/tmp/tmpw3frmela/projects/Proyecto prueba",
+    "sources": {
+      "pdf": "fuente/articulo.pdf",
+      "audio": "fuente/audio.mp3",
+      "bible": "fuente/citas.txt"
+    },
+    "outputs": {}
+  }
+]
