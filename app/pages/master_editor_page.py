@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.editor import MasterStore
-from app.master_generator import regenerate_answer
+from app.master_generator import regenerate_answer, regenerate_stage
 
 
 STATUS_LABELS = {
@@ -27,6 +27,14 @@ STATUS_LABELS = {
     "edited": "Editada",
 }
 LABEL_TO_STATUS = {label: status for status, label in STATUS_LABELS.items()}
+
+STAGE_LABELS = {
+    "Respuesta principal": "answer",
+    "Explicación bíblica": "scripture_explanation",
+    "Comparación": "comparison",
+    "Aplicación": "application",
+    "Nota de imagen": "image_note",
+}
 
 
 class AnswerCard(QGroupBox):
@@ -79,15 +87,21 @@ class AnswerCard(QGroupBox):
 
         save = QPushButton("Guardar cambios")
         approve = QPushButton("Aprobar")
-        regenerate = QPushButton("Regenerar esta respuesta")
+        regenerate = QPushButton("Regenerar respuesta completa")
+        self.stage_selector = QComboBox()
+        self.stage_selector.addItems(list(STAGE_LABELS))
+        regenerate_part = QPushButton("Regenerar etapa")
         save.clicked.connect(self.save_changes)
         approve.clicked.connect(self.approve)
         regenerate.clicked.connect(self.regenerate)
+        regenerate_part.clicked.connect(self.regenerate_selected_stage)
 
         buttons = QHBoxLayout()
         buttons.addWidget(save)
         buttons.addWidget(approve)
         buttons.addWidget(regenerate)
+        buttons.addWidget(self.stage_selector)
+        buttons.addWidget(regenerate_part)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
@@ -157,6 +171,34 @@ class AnswerCard(QGroupBox):
         self.comparison_edit.setPlainText(updated.get("comparison", ""))
         self.application_edit.setPlainText(updated.get("application", ""))
         self.image_edit.setPlainText(updated.get("image_note", ""))
+        self.status.setCurrentText("Regenerada")
+        self.changed.emit()
+
+    def regenerate_selected_stage(self) -> None:
+        label = self.stage_selector.currentText()
+        stage_key = STAGE_LABELS[label]
+        choice = QMessageBox.question(
+            self,
+            "Regenerar etapa",
+            f"Se reemplazará únicamente: {label}. ¿Continuar?",
+        )
+        if choice != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            updated = regenerate_stage(self.project, self.number, stage_key)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error al regenerar etapa", str(exc))
+            return
+
+        field_widgets = {
+            "answer": self.answer_edit,
+            "scripture_explanation": self.scripture_edit,
+            "comparison": self.comparison_edit,
+            "application": self.application_edit,
+            "image_note": self.image_edit,
+        }
+        field_widgets[stage_key].setPlainText(updated.get(stage_key, ""))
         self.status.setCurrentText("Regenerada")
         self.changed.emit()
 

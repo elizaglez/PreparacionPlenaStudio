@@ -60,3 +60,12 @@ python main.py
 ```bash
 python -m unittest discover -s tests
 ```
+
+## Sprint 8 — Motor de pipeline
+
+La generación del MASTER se divide ahora en cinco etapas trazables: respuesta
+principal, explicación bíblica, comparación, aplicación y nota de imagen. El
+editor permite regenerar una sola etapa sin reemplazar las demás y el estado se
+persiste en `trabajo/pipeline_estado.json`.
+
+Consulta `docs/ARQUITECTURA.md` para ver el flujo completo.
