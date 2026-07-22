@@ -1,7 +1,9 @@
-import json, re, shutil
+import re, shutil
 from datetime import datetime
 from pathlib import Path
-from app.storage import add_recent_project
+from app.models import Project, ProjectSources
+from app.persistence import load_project as load_project_file
+from app.persistence import remember_project, save_project
 
 class ProjectError(RuntimeError):
     pass
@@ -40,15 +42,16 @@ def create_project(name, base_folder, pdf_path, audio_path, bible_path):
         audio_rel = copy_required(audio_path, source / "audio.mp3", "audio")
         bible_rel = copy_required(bible_path, source / "citas.txt", "citas bíblicas")
         now = datetime.now().astimezone().isoformat(timespec="seconds")
-        data = {
-            "name":safe_name, "version":"0.1.0", "status":"nuevo",
-            "created_at":now, "updated_at":now, "root":str(root.resolve()),
-            "sources":{"pdf":pdf_rel,"audio":audio_rel,"bible":bible_rel},
-            "outputs":{}
-        }
-        (root/"proyecto.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        add_recent_project(data)
-        return data
+        project = Project(
+            name=safe_name,
+            created_at=now,
+            updated_at=now,
+            root=str(root.resolve()),
+            sources=ProjectSources(pdf=pdf_rel, audio=audio_rel, bible=bible_rel),
+        )
+        save_project(project)
+        remember_project(project)
+        return project
     except Exception:
         shutil.rmtree(root, ignore_errors=True)
         raise
@@ -60,9 +63,8 @@ def load_project(path):
     if not p.is_file():
         raise ProjectError("No se encontró proyecto.json.")
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
+        project = load_project_file(p)
     except Exception as exc:
         raise ProjectError("El proyecto está dañado o no se puede leer.") from exc
-    data["root"] = str(p.parent.resolve())
-    add_recent_project(data)
-    return data
+    remember_project(project)
+    return project

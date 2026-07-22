@@ -10,8 +10,10 @@ from app.ai import OpenAIEditor
 from app.config import ROOT_DIR
 from app.context import ContextBuilder, QuestionContext
 from app.logging import GenerationLog
+from app.models import Project
 from app.models.master import MasterAnswer, MasterDocument
 from app.pipeline import PipelineEngine, PipelineStage, PipelineStateStore
+from app.persistence import save_project
 from app.prompts import PromptLoader
 from app.storage import load_methodology, load_settings
 from app.validation.master_validator import validate_master
@@ -288,10 +290,10 @@ def _generate_one(
 
 
 def generate_master(
-    project: dict,
+    project: Project,
     progress_callback: ProgressCallback | None = None,
 ) -> dict:
-    root = Path(project.get("root", ""))
+    root = Path(project.root)
     if not root.is_dir():
         raise MasterGenerationError("La carpeta del proyecto no existe.")
 
@@ -383,10 +385,9 @@ def generate_master(
         encoding="utf-8",
     )
 
-    project["status"] = "master_validado"
-    project["updated_at"] = generated_at
-    project.setdefault("outputs", {})
-    project["outputs"].update(
+    project.status = "master_validado"
+    project.updated_at = generated_at
+    project.outputs.update(
         {
             "master": "trabajo/master.json",
             "master_validation": "trabajo/master_validacion.json",
@@ -394,10 +395,7 @@ def generate_master(
             "pipeline_state": "trabajo/pipeline_estado.json",
         }
     )
-    (root / "proyecto.json").write_text(
-        json.dumps(project, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    save_project(project)
 
     summary = {
         "title": master.title,
@@ -421,10 +419,10 @@ def generate_master(
 
 
 def regenerate_answer(
-    project: dict,
+    project: Project,
     answer_number: int,
 ) -> dict:
-    root = Path(project.get("root", ""))
+    root = Path(project.root)
     work_dir = root / "trabajo"
     article = _load_json(work_dir / "articulo.json")
     master = _load_json(work_dir / "master.json")
@@ -510,14 +508,14 @@ def regenerate_answer(
 
 
 def regenerate_stage(
-    project: dict,
+    project: Project,
     answer_number: int,
     stage_key: str,
 ) -> dict:
     if stage_key not in {stage.key for stage in PIPELINE_STAGES}:
         raise MasterGenerationError(f"Etapa desconocida: {stage_key}")
 
-    root = Path(project.get("root", ""))
+    root = Path(project.root)
     work_dir = root / "trabajo"
     article = _load_json(work_dir / "articulo.json")
     master = _load_json(work_dir / "master.json")

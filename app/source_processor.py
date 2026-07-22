@@ -5,7 +5,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from app.models import Project
 from app.parsers import parse_article
+from app.persistence import save_project
 from app.readers import inspect_audio, read_bible_source, read_pdf
 
 
@@ -22,17 +24,16 @@ def _emit(callback: ProgressCallback | None, value: int, message: str) -> None:
 
 
 def process_project_sources(
-    project: dict,
+    project: Project,
     progress_callback: ProgressCallback | None = None,
 ) -> dict:
-    root = Path(project.get("root", ""))
+    root = Path(project.root)
     if not root.is_dir():
         raise SourceProcessingError("La carpeta del proyecto no existe.")
 
-    sources = project.get("sources", {})
-    pdf_path = root / sources.get("pdf", "")
-    audio_path = root / sources.get("audio", "")
-    bible_path = root / sources.get("bible", "")
+    pdf_path = root / project.sources.pdf
+    audio_path = root / project.sources.audio
+    bible_path = root / project.sources.bible
     work_dir = root / "trabajo"
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -63,7 +64,7 @@ def process_project_sources(
 
     summary = {
         "processed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "project": project.get("name", ""),
+        "project": project.name,
         "pdf": {
             key: value
             for key, value in pdf_result.items()
@@ -100,10 +101,9 @@ def process_project_sources(
         encoding="utf-8",
     )
 
-    project["status"] = "articulo_estructurado"
-    project["updated_at"] = summary["processed_at"]
-    project.setdefault("outputs", {})
-    project["outputs"].update(
+    project.status = "articulo_estructurado"
+    project.updated_at = summary["processed_at"]
+    project.outputs.update(
         {
             "pdf_text": "trabajo/pdf_extraido.txt",
             "bible_text": "trabajo/citas_extraidas.txt",
@@ -111,10 +111,7 @@ def process_project_sources(
             "sources_summary": "trabajo/fuentes_resumen.json",
         }
     )
-    (root / "proyecto.json").write_text(
-        json.dumps(project, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    save_project(project)
 
     _emit(progress_callback, 100, "Artículo estructurado correctamente.")
     return summary
