@@ -89,7 +89,7 @@ class ProjectWorkspace(QWidget):
         self.title.setText(project.name)
         self.path.setText(project.root)
         self.status.setText("Proyecto listo.")
-        sources = project.get("sources", {})
+        sources = project.sources
         self.pdf.setText("PDF: " + sources.get("pdf", "—"))
         self.audio.setText("Audio: " + sources.get("audio", "—"))
         self.bible.setText("Citas: " + sources.get("bible", "—"))
