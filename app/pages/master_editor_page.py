@@ -230,7 +230,7 @@ class MasterEditorPage(QWidget):
 
     def set_project(self, project: dict) -> None:
         self.project = project
-        self.store = MasterStore(project["root"])
+        self.store = MasterStore(project.root)
         self.reload()
 
     def reload(self) -> None:

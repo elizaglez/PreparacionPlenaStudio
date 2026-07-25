@@ -20,7 +20,7 @@ class ProjectServiceTests(unittest.TestCase):
                 "Proyecto prueba", str(base / "projects"),
                 str(pdf), str(audio), str(bible)
             )
-            root = Path(project["root"])
+            root = Path(project.root)
             self.assertTrue((root / "proyecto.json").is_file())
             self.assertTrue((root / "fuente" / "articulo.pdf").is_file())
             self.assertTrue((root / "fuente" / "audio.mp3").is_file())

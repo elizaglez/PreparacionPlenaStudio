@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
         self.pages["history"].refresh()
         self.navigate("workspace")
         self.statusBar().showMessage(
-            "Proyecto abierto: " + project.get("name", ""),
+            "Proyecto abierto: " + project.name,
             5000,
         )
 

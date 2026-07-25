@@ -48,7 +48,7 @@ class NewProjectPage(QWidget):
         except Exception as exc:
             QMessageBox.critical(self,"Error",str(exc))
         else:
-            QMessageBox.information(self,"Proyecto creado",project["root"])
+            QMessageBox.information(self,"Proyecto creado",project.root)
             self.project_created.emit(project)
             self.name.clear(); self.pdf.set_value(""); self.audio.set_value(""); self.bible.set_value("")
         finally:

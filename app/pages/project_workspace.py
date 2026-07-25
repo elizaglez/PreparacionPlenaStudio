@@ -86,8 +86,8 @@ class ProjectWorkspace(QWidget):
 
     def set_project(self, project: dict) -> None:
         self.project = project
-        self.title.setText(project.get("name", "Proyecto"))
-        self.path.setText(project.get("root", ""))
+        self.title.setText(project.name)
+        self.path.setText(project.root)
         self.status.setText("Proyecto listo.")
         sources = project.get("sources", {})
         self.pdf.setText("PDF: " + sources.get("pdf", "—"))
@@ -99,7 +99,7 @@ class ProjectWorkspace(QWidget):
     def _refresh_outputs(self) -> None:
         if not self.project:
             return
-        work = Path(self.project["root"]) / "trabajo"
+        work = Path(self.project.root) / "trabajo"
         article_exists = (work / "articulo.json").is_file()
         master_exists = (work / "master.json").is_file()
         self.generate.setEnabled(article_exists and self.thread is None)
@@ -227,7 +227,7 @@ class ProjectWorkspace(QWidget):
     def _load_and_show_master(self) -> None:
         if not self.project:
             return
-        path = Path(self.project["root"]) / "trabajo" / "master.json"
+        path = Path(self.project.root) / "trabajo" / "master.json"
         try:
             master = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
