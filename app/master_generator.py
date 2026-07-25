@@ -17,7 +17,7 @@ from app.pipeline.execution import PipelineExecution
 from app.persistence import save_project
 from app.prompts import PromptLoader
 from app.storage import load_methodology, load_settings
-from app.use_cases import GenerateMasterUseCase
+from app.use_cases import GenerateMasterUseCase, RegenerateAnswerUseCase
 from app.validation.master_validator import validate_master
 
 
@@ -320,90 +320,21 @@ def regenerate_answer(
     project: Project,
     answer_number: int,
 ) -> dict:
-    root = Path(project.root)
-    work_dir = root / "trabajo"
-    article = _load_json(work_dir / "articulo.json")
-    master = _load_json(work_dir / "master.json")
-
-    sections = article.get("sections", [])
-    section_index = next(
-        (
-            index
-            for index, item in enumerate(sections)
-            if int(item.get("number", 0)) == answer_number
-        ),
-        None,
+    use_case = RegenerateAnswerUseCase(
+        load_json=_load_json,
+        methodology_instructions=_methodology_instructions,
+        generate_one=_generate_one,
+        error_type=MasterGenerationError,
+        settings_loader=load_settings,
+        methodology_loader=load_methodology,
+        editor_factory=OpenAIEditor,
+        context_builder_factory=ContextBuilder,
+        generation_log_factory=GenerationLog,
+        pipeline_state_factory=PipelineStateStore,
+        validator=validate_master,
+        now=datetime.now,
     )
-    if section_index is None:
-        raise MasterGenerationError(
-            f"No existe la pregunta número {answer_number}."
-        )
-
-    bible_path = work_dir / "citas_extraidas.txt"
-    bible_text = (
-        bible_path.read_text(encoding="utf-8")
-        if bible_path.is_file()
-        else ""
-    )
-    settings = load_settings()
-    model = settings.get("openai_model", "gpt-5-mini")
-    methodology = load_methodology()
-    instructions = _methodology_instructions(methodology)
-    editor = OpenAIEditor(model=model)
-
-    current = next(
-        (
-            item for item in master.get("answers", [])
-            if int(item.get("number", 0)) == answer_number
-        ),
-        {},
-    )
-    replacement = _generate_one(
-        project=project,
-        editor=editor,
-        instructions=instructions,
-        article=article,
-        context_builder=ContextBuilder(article, bible_text),
-        section_index=section_index,
-        model=model,
-        log=GenerationLog(root),
-        operation="regenerate",
-        state_store=PipelineStateStore(root),
-        existing_answer=current,
-    ).to_dict()
-
-    answers = master.get("answers", [])
-    replaced = False
-    for index, answer in enumerate(answers):
-        if int(answer.get("number", 0)) == answer_number:
-            answers[index] = replacement
-            replaced = True
-            break
-
-    if not replaced:
-        answers.append(replacement)
-        answers.sort(key=lambda item: int(item.get("number", 0)))
-
-    master["answers"] = answers
-    master["generated_at"] = datetime.now().astimezone().isoformat(
-        timespec="seconds"
-    )
-
-    report = validate_master(article, master)
-    (work_dir / "master_validacion.json").write_text(
-        json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    if not report.valid:
-        raise MasterGenerationError(
-            "La respuesta regenerada no superó la validación."
-        )
-
-    (work_dir / "master.json").write_text(
-        json.dumps(master, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return replacement
+    return use_case.execute(project, answer_number)
 
 
 def regenerate_stage(
