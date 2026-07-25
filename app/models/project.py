@@ -24,9 +24,3 @@ class Project:
     root: str = ""
     sources: ProjectSources = field(default_factory=ProjectSources)
     outputs: dict[str, str] = field(default_factory=dict)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return getattr(self, key, default)
-
-    def __getitem__(self, key: str) -> Any:
-        return getattr(self, key)
