@@ -13,6 +13,7 @@ from app.logging import GenerationLog
 from app.models import Project
 from app.models.master import MasterAnswer, MasterDocument
 from app.pipeline import PipelineEngine, PipelineStage, PipelineStateStore
+from app.pipeline.execution import PipelineExecution
 from app.persistence import save_project
 from app.prompts import PromptLoader
 from app.storage import load_methodology, load_settings
@@ -235,8 +236,8 @@ def _generate_one(
         )
     }
 
-    def execute(stage: PipelineStage, values: dict[str, str]):
-        input_text = _stage_input(context, stage.key, values)
+    def execute(stage: PipelineStage, execution: PipelineExecution):
+        input_text = _stage_input(context, stage.key, execution.values)
         started = time.perf_counter()
         result = editor.generate_json(
             instructions=instructions,
@@ -266,6 +267,7 @@ def _generate_one(
         state_store=state_store,
     )
     results = engine.run(
+        project,
         question_number=int(section.get("number", 0)),
         question=context.question,
         initial_values=initial_values,

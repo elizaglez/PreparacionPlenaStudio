@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app.models import Project
 from app.pipeline import (
     PipelineEngine,
     PipelineError,
@@ -9,10 +10,12 @@ from app.pipeline import (
     PipelineStateStore,
     StageStatus,
 )
+from app.pipeline.execution import PipelineExecution
 
 
 class PipelineEngineTests(unittest.TestCase):
     def setUp(self):
+        self.project = Project(name="Proyecto de prueba")
         self.stages = (
             PipelineStage("answer", "Respuesta", "answer", required=True),
             PipelineStage(
@@ -26,16 +29,20 @@ class PipelineEngineTests(unittest.TestCase):
     def test_runs_stages_in_order_and_persists_state(self):
         calls = []
 
-        def executor(stage, values):
+        def executor(stage, execution: PipelineExecution):
             calls.append(stage.key)
             if stage.key == "answer":
                 return "Respuesta breve", ["Párrafo 1"]
-            return f"Aplicación de {values['answer']}", []
+            return f"Aplicación de {execution.values['answer']}", []
 
         with tempfile.TemporaryDirectory() as tmp:
             store = PipelineStateStore(tmp)
             engine = PipelineEngine(self.stages, executor, state_store=store)
-            results = engine.run(question_number=1, question="¿Pregunta?")
+            results = engine.run(
+                self.project,
+                question_number=1,
+                question="¿Pregunta?",
+            )
 
             self.assertEqual(calls, ["answer", "application"])
             self.assertEqual(results["answer"].status, StageStatus.COMPLETED)
@@ -46,12 +53,13 @@ class PipelineEngineTests(unittest.TestCase):
     def test_regenerates_only_selected_stage(self):
         calls = []
 
-        def executor(stage, values):
+        def executor(stage, execution: PipelineExecution):
             calls.append(stage.key)
             return "Nueva aplicación", []
 
         engine = PipelineEngine(self.stages, executor)
         results = engine.run(
+            self.project,
             question_number=2,
             question="¿Pregunta?",
             initial_values={"answer": "Respuesta existente"},
@@ -61,9 +69,13 @@ class PipelineEngineTests(unittest.TestCase):
         self.assertEqual(results["application"].value, "Nueva aplicación")
 
     def test_dependency_is_required_for_individual_stage(self):
-        engine = PipelineEngine(self.stages, lambda stage, values: ("x", []))
+        engine = PipelineEngine(
+            self.stages,
+            lambda stage, execution: ("x", []),
+        )
         with self.assertRaises(PipelineError):
             engine.run(
+                self.project,
                 question_number=3,
                 question="¿Pregunta?",
                 only_stage="application",

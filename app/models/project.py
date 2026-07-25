@@ -24,8 +24,6 @@ class Project:
     root: str = ""
     sources: ProjectSources = field(default_factory=ProjectSources)
     outputs: dict[str, str] = field(default_factory=dict)
-    pipeline_values: dict[str, str] = field(default_factory=dict, repr=False)
-    pipeline_results: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def get(self, key: str, default: Any = None) -> Any:
         return getattr(self, key, default)

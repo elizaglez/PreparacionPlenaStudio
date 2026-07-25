@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 from typing import Callable, Iterable
 
+from app.models import Project
+from app.pipeline.execution import PipelineExecution
 from app.pipeline.stage import PipelineStage, PipelineStageResult, StageStatus
 from app.pipeline.state_store import PipelineStateStore
 
@@ -12,7 +14,10 @@ class PipelineError(RuntimeError):
     pass
 
 
-StageExecutor = Callable[[PipelineStage, dict[str, str]], tuple[str, list[str]]]
+StageExecutor = Callable[
+    [PipelineStage, PipelineExecution],
+    tuple[str, list[str]],
+]
 StageCallback = Callable[[PipelineStage, PipelineStageResult], None]
 
 
@@ -33,6 +38,7 @@ class PipelineEngine:
 
     def run(
         self,
+        project: Project,
         *,
         question_number: int,
         question: str,
@@ -40,18 +46,25 @@ class PipelineEngine:
         only_stage: str | None = None,
         callback: StageCallback | None = None,
     ) -> dict[str, PipelineStageResult]:
-        values = dict(initial_values or {})
-        results: dict[str, PipelineStageResult] = {}
+        execution = PipelineExecution(
+            project=project,
+            values=dict(initial_values or {}),
+        )
 
         selected = self._select_stages(only_stage)
         for stage in selected:
-            missing = [key for key in stage.dependencies if not values.get(key, "").strip()]
+            missing = [
+                key
+                for key in stage.dependencies
+                if not execution.values.get(key, "").strip()
+            ]
             if missing:
                 result = PipelineStageResult(
                     key=stage.key,
                     status=StageStatus.FAILED,
                     error="Faltan dependencias: " + ", ".join(missing),
                 )
+                execution.results[stage.key] = result
                 self._persist(question_number, question, result)
                 raise PipelineError(
                     f"No se puede ejecutar {stage.label}: {result.error}"
@@ -62,13 +75,14 @@ class PipelineEngine:
                 status=StageStatus.RUNNING,
                 started_at=self._now(),
             )
+            execution.results[stage.key] = result
             self._persist(question_number, question, result)
             if callback:
                 callback(stage, result)
 
             started = time.perf_counter()
             try:
-                value, notes = self.executor(stage, values)
+                value, notes = self.executor(stage, execution)
                 value = str(value).strip()
                 if stage.required and not value:
                     raise PipelineError(
@@ -77,7 +91,7 @@ class PipelineEngine:
                 result.value = value
                 result.source_notes = [str(item).strip() for item in notes if str(item).strip()]
                 result.status = StageStatus.COMPLETED
-                values[stage.key] = value
+                execution.values[stage.key] = value
             except Exception as exc:
                 result.status = StageStatus.FAILED
                 result.error = str(exc)
@@ -85,12 +99,11 @@ class PipelineEngine:
             finally:
                 result.duration_seconds = round(time.perf_counter() - started, 3)
                 result.completed_at = self._now()
-                results[stage.key] = result
                 self._persist(question_number, question, result)
                 if callback:
                     callback(stage, result)
 
-        return results
+        return execution.results
 
     def _select_stages(self, only_stage: str | None) -> list[PipelineStage]:
         if not only_stage:
