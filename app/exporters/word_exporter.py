@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.models import Project
+
 
 class WordExportError(RuntimeError):
     pass
 
 
-def export_master_to_docx(project: dict) -> Path:
+def export_master_to_docx(project: Project) -> Path:
     try:
         from docx import Document
         from docx.shared import Pt
@@ -17,7 +19,7 @@ def export_master_to_docx(project: dict) -> Path:
             "No está instalado python-docx. Ejecuta pip install -r requirements.txt."
         ) from exc
 
-    root = Path(project.get("root", ""))
+    root = Path(project.root)
     master_path = root / "trabajo" / "master.json"
     if not master_path.is_file():
         raise WordExportError("Primero genera el MASTER.")

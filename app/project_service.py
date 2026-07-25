@@ -22,7 +22,7 @@ def copy_required(source, destination, label):
     shutil.copy2(src, destination)
     return str(destination.relative_to(destination.parents[1]))
 
-def create_project(name, base_folder, pdf_path, audio_path, bible_path):
+def create_project(name, base_folder, pdf_path, audio_path, bible_path) -> Project:
     safe_name = slugify(name)
     base = Path(base_folder).expanduser()
     base.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ def create_project(name, base_folder, pdf_path, audio_path, bible_path):
         shutil.rmtree(root, ignore_errors=True)
         raise
 
-def load_project(path):
+def load_project(path) -> Project:
     p = Path(path)
     if p.is_dir():
         p = p / "proyecto.json"

@@ -5,6 +5,7 @@ import traceback
 from PySide6.QtCore import QObject, Signal, Slot
 
 from app.master_generator import generate_master
+from app.models import Project
 from app.source_processor import process_project_sources
 
 
@@ -13,7 +14,7 @@ class SourceProcessorWorker(QObject):
     finished = Signal(dict)
     failed = Signal(str)
 
-    def __init__(self, project: dict):
+    def __init__(self, project: Project):
         super().__init__()
         self.project = project
 
@@ -36,7 +37,7 @@ class MasterGeneratorWorker(QObject):
     finished = Signal(dict)
     failed = Signal(str)
 
-    def __init__(self, project: dict):
+    def __init__(self, project: Project):
         super().__init__()
         self.project = project
 
