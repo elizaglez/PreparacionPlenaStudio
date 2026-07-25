@@ -17,7 +17,11 @@ from app.pipeline.execution import PipelineExecution
 from app.persistence import save_project
 from app.prompts import PromptLoader
 from app.storage import load_methodology, load_settings
-from app.use_cases import GenerateMasterUseCase, RegenerateAnswerUseCase
+from app.use_cases import (
+    GenerateMasterUseCase,
+    RegenerateAnswerUseCase,
+    RegenerateStageUseCase,
+)
 from app.validation.master_validator import validate_master
 
 
@@ -342,79 +346,19 @@ def regenerate_stage(
     answer_number: int,
     stage_key: str,
 ) -> dict:
-    if stage_key not in {stage.key for stage in PIPELINE_STAGES}:
-        raise MasterGenerationError(f"Etapa desconocida: {stage_key}")
-
-    root = Path(project.root)
-    work_dir = root / "trabajo"
-    article = _load_json(work_dir / "articulo.json")
-    master = _load_json(work_dir / "master.json")
-    sections = article.get("sections", [])
-    section_index = next(
-        (
-            index for index, item in enumerate(sections)
-            if int(item.get("number", 0)) == answer_number
-        ),
-        None,
+    use_case = RegenerateStageUseCase(
+        pipeline_stages=PIPELINE_STAGES,
+        load_json=_load_json,
+        methodology_instructions=_methodology_instructions,
+        generate_one=_generate_one,
+        error_type=MasterGenerationError,
+        settings_loader=load_settings,
+        methodology_loader=load_methodology,
+        editor_factory=OpenAIEditor,
+        context_builder_factory=ContextBuilder,
+        generation_log_factory=GenerationLog,
+        pipeline_state_factory=PipelineStateStore,
+        validator=validate_master,
+        now=datetime.now,
     )
-    if section_index is None:
-        raise MasterGenerationError(
-            f"No existe la pregunta número {answer_number}."
-        )
-
-    current = next(
-        (
-            item for item in master.get("answers", [])
-            if int(item.get("number", 0)) == answer_number
-        ),
-        None,
-    )
-    if current is None:
-        raise MasterGenerationError(
-            f"El MASTER no contiene la pregunta número {answer_number}."
-        )
-
-    bible_path = work_dir / "citas_extraidas.txt"
-    bible_text = bible_path.read_text(encoding="utf-8") if bible_path.is_file() else ""
-    settings = load_settings()
-    model = settings.get("openai_model", "gpt-5-mini")
-    methodology = load_methodology()
-
-    replacement = _generate_one(
-        project=project,
-        editor=OpenAIEditor(model=model),
-        instructions=_methodology_instructions(methodology),
-        article=article,
-        context_builder=ContextBuilder(article, bible_text),
-        section_index=section_index,
-        model=model,
-        log=GenerationLog(root),
-        operation="regenerate_stage",
-        state_store=PipelineStateStore(root),
-        only_stage=stage_key,
-        existing_answer=current,
-    ).to_dict()
-    replacement["status"] = "regenerated"
-
-    for index, item in enumerate(master.get("answers", [])):
-        if int(item.get("number", 0)) == answer_number:
-            master["answers"][index] = replacement
-            break
-    master["generated_at"] = datetime.now().astimezone().isoformat(
-        timespec="seconds"
-    )
-
-    report = validate_master(article, master)
-    (work_dir / "master_validacion.json").write_text(
-        json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    if not report.valid:
-        raise MasterGenerationError(
-            "La etapa regenerada no superó la validación del MASTER."
-        )
-    (work_dir / "master.json").write_text(
-        json.dumps(master, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return replacement
+    return use_case.execute(project, answer_number, stage_key)
