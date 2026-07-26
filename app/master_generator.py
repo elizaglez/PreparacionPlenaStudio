@@ -7,7 +7,7 @@ from typing import Callable
 
 from app.ai import OpenAIEditor
 from app.config import ROOT_DIR
-from app.context import ContextBuilder, QuestionContext
+from app.context import ContextBuilder
 from app.generation import (
     MasterGenerationError,
     PIPELINE_STAGES,
@@ -60,28 +60,6 @@ def _methodology_instructions(methodology: dict) -> str:
         f"- {item}" for item in methodology.get("principles", [])
     )
     return _prompt_loader().render("system", {"principles": principles})
-
-
-def _build_input(context: QuestionContext) -> str:
-    return _prompt_loader().render(
-        "answer",
-        {
-            "title": context.article_title,
-            "introduction": context.article_introduction or "No disponible.",
-            "heading": context.heading or "No disponible.",
-            "previous_question": context.previous_question or "No disponible.",
-            "question": context.question,
-            "next_question": context.next_question or "No disponible.",
-            "paragraphs": context.paragraph_text or "No disponibles.",
-            "references": (
-                ", ".join(context.scripture_references) or "Ninguna."
-            ),
-            "bible_context": (
-                context.bible_context
-                or "No se encontró un fragmento claramente asociado."
-            ),
-        },
-    )
 
 
 def generate_master(
