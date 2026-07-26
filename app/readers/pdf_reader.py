@@ -6,6 +6,12 @@ from typing import Any
 
 import fitz
 
+from app.readers.ocr_reader import (
+    OcrReadError,
+    OcrUnavailableError,
+    read_page_with_ocr,
+)
+
 
 class PdfReadError(RuntimeError):
     pass
@@ -88,17 +94,57 @@ def read_pdf(path: str | Path) -> dict[str, Any]:
         if document.page_count == 0:
             raise PdfReadError("El PDF no contiene páginas.")
 
-        pages: list[dict[str, Any]] = []
-        all_text: list[str] = []
-        all_questions: list[str] = []
-        all_scriptures: list[str] = []
+        native_pages: list[dict[str, Any]] = []
 
         for index, page in enumerate(document):
             text = _normalize(page.get_text("text"))
             blocks = _extract_blocks(page)
+            native_pages.append(
+                {
+                    "page_number": index + 1,
+                    "character_count": len(text),
+                    "text": text,
+                    "blocks": blocks,
+                }
+            )
+
+        native_character_count = sum(
+            len(page["text"]) for page in native_pages
+        )
+        pages = native_pages
+
+        if native_character_count == 0:
+            pages = []
+            for index, page in enumerate(document):
+                try:
+                    ocr_result = read_page_with_ocr(page)
+                except OcrUnavailableError as exc:
+                    raise PdfReadError(str(exc)) from exc
+                except OcrReadError as exc:
+                    raise PdfReadError(str(exc)) from exc
+                text = _normalize(str(ocr_result.get("text", "")))
+                blocks = ocr_result.get("blocks", [])
+                if not isinstance(blocks, list):
+                    blocks = []
+                pages.append(
+                    {
+                        "page_number": index + 1,
+                        "character_count": len(text),
+                        "text": text,
+                        "blocks": blocks,
+                    }
+                )
+
+        all_text: list[str] = []
+        all_questions: list[str] = []
+        all_scriptures: list[str] = []
+        for page in pages:
+            text = page["text"]
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             questions = _detect_questions(lines)
             scriptures = _detect_scriptures(text)
+            page["questions"] = questions
+            page["scripture_references"] = scriptures
 
             for question in questions:
                 if question not in all_questions:
@@ -107,23 +153,15 @@ def read_pdf(path: str | Path) -> dict[str, Any]:
                 if scripture not in all_scriptures:
                     all_scriptures.append(scripture)
 
-            pages.append(
-                {
-                    "page_number": index + 1,
-                    "character_count": len(text),
-                    "text": text,
-                    "blocks": blocks,
-                    "questions": questions,
-                    "scripture_references": scriptures,
-                }
+            all_text.append(
+                f"=== PÁGINA {page['page_number']} ===\n{text}"
             )
-            all_text.append(f"=== PÁGINA {index + 1} ===\n{text}")
 
         combined = "\n\n".join(all_text).strip()
-        if len(combined) < 50:
+        extracted_character_count = sum(len(page["text"]) for page in pages)
+        if extracted_character_count < 50:
             raise PdfReadError(
-                "El PDF casi no contiene texto seleccionable. "
-                "Probablemente sea un escaneo y necesitará OCR en una entrega posterior."
+                "El PDF casi no contiene texto reconocible."
             )
 
         metadata = document.metadata or {}
