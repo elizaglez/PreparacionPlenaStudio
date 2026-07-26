@@ -4,6 +4,207 @@ from app.parsers.article_parser import parse_article
 
 
 class ArticleParserTests(unittest.TestCase):
+    def test_detects_subtitles_summaries_and_review_questions(self):
+        sample = {
+            "title": "CUIDEMOS NUESTRA AMISTAD CON JEHOVÁ",
+            "text": """
+CUIDEMOS NUESTRA AMISTAD CON JEHOVÁ
+“Manténganse cerca de Jehová” (SANT. 4:8).
+1-7 DE JULIO DE 2026
+CANCIÓN 10
+Jehová es nuestro refugio
+TEMA
+Cómo proteger nuestra amistad con Jehová.
+Esta es la introducción del artículo.
+1 La introducción presenta el tema principal.
+1. ¿Qué presenta la introducción?
+MANTÉN UN BUEN PROGRAMA DE ACTIVIDADES ESPIRITUALES
+2 Debemos estudiar y orar todos los días.
+2. ¿Qué actividades debemos mantener?
+PROTEGE TU CAPACIDAD DE PENSAR
+3 Debemos cuidar nuestra manera de pensar.
+3. ¿Qué debemos proteger?
+REPASO
+1. ¿Qué programa debemos mantener?
+2. ¿Cómo protegemos nuestra capacidad de pensar?
+3. ¿Qué aprendimos de Jehová?
+CANCIÓN 20
+Sigamos adelante
+""",
+        }
+
+        article = parse_article(sample)
+        data = article.to_dict()
+
+        self.assertEqual(article.title, "CUIDEMOS NUESTRA AMISTAD CON JEHOVÁ")
+        self.assertNotIn(article.title, article.detected_headings)
+        self.assertNotIn("CANCIÓN 10", article.detected_headings)
+        self.assertFalse(hasattr(article, "section_summary"))
+
+        self.assertEqual(article.sections[0].subtitle, "")
+        self.assertIsNone(article.sections[0].section_summary)
+        self.assertEqual(
+            article.sections[1].subtitle,
+            "MANTÉN UN BUEN PROGRAMA DE ACTIVIDADES ESPIRITUALES",
+        )
+        self.assertEqual(
+            article.sections[1].questions,
+            ["¿Qué actividades debemos mantener?"],
+        )
+        self.assertEqual(article.sections[1].paragraph_numbers, [2])
+        self.assertEqual(
+            article.sections[2].subtitle,
+            "PROTEGE TU CAPACIDAD DE PENSAR",
+        )
+        self.assertIsNone(article.sections[2].section_summary)
+        self.assertEqual(
+            article.review_questions,
+            [
+                "¿Qué programa debemos mantener?",
+                "¿Cómo protegemos nuestra capacidad de pensar?",
+                "¿Qué aprendimos de Jehová?",
+            ],
+        )
+        self.assertEqual(data["sections"][1]["section_summary"], None)
+        self.assertEqual(data["review_questions"], article.review_questions)
+
+    def test_recovers_initial_paragraph_when_number_one_is_missing(self):
+        sample = {
+            "title": "Artículo de prueba",
+            "text": """
+ENCABEZADO UNO
+ENCABEZADO DOS
+ENCABEZADO TRES
+ENCABEZADO CUATRO
+ENCABEZADO CINCO
+ENCABEZADO SEIS
+El primer párrafo comienza directamente con su contenido narrativo.
+Continúa en otra línea antes de que aparezca el siguiente número.
+2 El segundo párrafo sí conserva su número visible.
+1, 2. ¿Qué enseñan los primeros dos párrafos?
+""",
+        }
+
+        article = parse_article(sample)
+
+        self.assertEqual(article.sections[0].paragraph_numbers, [1, 2])
+        self.assertEqual(
+            article.sections[0].paragraphs[0].text,
+            (
+                "El primer párrafo comienza directamente con su contenido "
+                "narrativo. Continúa en otra línea antes de que aparezca el "
+                "siguiente número."
+            ),
+        )
+
+    def test_separates_consecutive_numbered_questions(self):
+        sample = {
+            "title": "Artículo de prueba",
+            "text": """
+1 Primer párrafo.
+2 Segundo párrafo.
+3 Tercer párrafo.
+1. ¿Qué aprendemos del primer párrafo?
+2. ¿Qué aprendemos del segundo párrafo?
+3. ¿Qué aprendemos del tercer párrafo?
+ENCABEZADO UNO
+ENCABEZADO DOS
+ENCABEZADO TRES
+ENCABEZADO CUATRO
+""",
+        }
+
+        article = parse_article(sample)
+
+        self.assertEqual(len(article.sections), 3)
+        self.assertEqual(
+            [section.paragraph_numbers for section in article.sections],
+            [[1], [2], [3]],
+        )
+
+    def test_recognizes_question_mark_on_following_line(self):
+        sample = {
+            "title": "Artículo de prueba",
+            "text": """
+ENCABEZADO UNO
+ENCABEZADO DOS
+ENCABEZADO TRES
+ENCABEZADO CUATRO
+ENCABEZADO CINCO
+ENCABEZADO SEIS
+ENCABEZADO SIETE
+19 Este párrafo ayuda a prepararnos.
+19. Antes de empezar los estudios adicionales,
+¿qué podemos hacer para estar preparados?
+""",
+        }
+
+        article = parse_article(sample)
+
+        self.assertEqual(len(article.sections), 1)
+        self.assertEqual(
+            article.sections[0].question,
+            (
+                "Antes de empezar los estudios adicionales, "
+                "¿qué podemos hacer para estar preparados?"
+            ),
+        )
+        self.assertEqual(article.sections[0].paragraph_numbers, [19])
+
+    def test_keeps_combined_question_as_one_section(self):
+        sample = {
+            "title": "Artículo de prueba",
+            "text": """
+1 Primer párrafo.
+2 Segundo párrafo.
+1, 2. a) ¿Qué aprendemos del primer párrafo?
+b) ¿Qué aprendemos del segundo párrafo?
+ENCABEZADO UNO
+ENCABEZADO DOS
+ENCABEZADO TRES
+ENCABEZADO CUATRO
+ENCABEZADO CINCO
+ENCABEZADO SEIS
+""",
+        }
+
+        article = parse_article(sample)
+
+        self.assertEqual(len(article.sections), 1)
+        self.assertEqual(article.sections[0].paragraph_numbers, [1, 2])
+        self.assertEqual(
+            article.sections[0].question,
+            (
+                "a) ¿Qué aprendemos del primer párrafo? "
+                "b) ¿Qué aprendemos del segundo párrafo?"
+            ),
+        )
+
+    def test_does_not_treat_body_question_without_number_as_study_question(self):
+        sample = {
+            "title": "Artículo de prueba",
+            "text": """
+ENCABEZADO UNO
+ENCABEZADO DOS
+ENCABEZADO TRES
+ENCABEZADO CUATRO
+ENCABEZADO CINCO
+1 Este párrafo contiene una reflexión.
+¿Cómo podemos poner en práctica este consejo?
+2 Este es el segundo párrafo.
+1. ¿Qué contiene el primer párrafo?
+2. ¿Qué contiene el segundo párrafo?
+""",
+        }
+
+        article = parse_article(sample)
+
+        self.assertEqual(len(article.sections), 2)
+        self.assertEqual(
+            [section.paragraph_numbers for section in article.sections],
+            [[1], [2]],
+        )
+
     def test_structures_questions_and_paragraphs(self):
         sample = {
             "title": "Cómo fortalecer nuestra fe",

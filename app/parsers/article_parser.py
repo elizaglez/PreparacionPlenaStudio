@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.models.article import Article, ArticleParagraph, ArticleSection
@@ -11,6 +12,18 @@ class ArticleParserError(RuntimeError):
     pass
 
 
+@dataclass
+class ParsedArticleSection(ArticleSection):
+    subtitle: str = ""
+    questions: list[str] = field(default_factory=list)
+    section_summary: str | None = None
+
+
+@dataclass
+class ParsedArticle(Article):
+    review_questions: list[str] = field(default_factory=list)
+
+
 PARAGRAPH_RE = re.compile(
     r"^\s*(?P<number>\d{1,2})[.)]?\s+(?P<text>\S.*)$"
 )
@@ -19,15 +32,27 @@ QUESTION_START_RE = re.compile(
     r"(?P<question>(?:[a-z]\)\s*)?.*¿.*)$",
     re.IGNORECASE,
 )
+QUESTION_PREFIX_RE = re.compile(
+    r"^\s*(?P<numbers>\d{1,2}(?:\s*[-–,]\s*\d{1,2})*)[.)]\s+"
+    r"(?P<question>(?:[a-z]\)\s*)?.+)$",
+    re.IGNORECASE,
+)
+QUESTION_PART_RE = re.compile(r"^[a-z]\)\s+", re.IGNORECASE)
 PLAIN_QUESTION_RE = re.compile(r"^\s*(¿.+\?)\s*$")
 PAGE_MARKER_RE = re.compile(
     r"^===\s*P[ÁA]GINA\s+\d+\s*===$",
     re.IGNORECASE,
 )
 ANSWER_LABEL_RE = re.compile(r"^Respuestas?$", re.IGNORECASE)
-ALL_CAPS_RE = re.compile(r"^[A-ZÁÉÍÓÚÜÑ0-9][A-ZÁÉÍÓÚÜÑ0-9 ,;:¿?¡!()'\"-]{4,}$")
-
-
+REVIEW_HEADING_RE = re.compile(
+    r"^(?:REPASO|PREGUNTAS\s+DE\s+REPASO)$",
+    re.IGNORECASE,
+)
+STUDY_DATE_RE = re.compile(
+    r"^\d{1,2}(?:\s+DE\s+[^-]+)?-"
+    r"\d{1,2}\s+DE\s+.+\s+DE\s+\d{4}$",
+    re.IGNORECASE,
+)
 def _clean_lines(text: str) -> list[str]:
     lines: list[str] = []
     for raw in text.replace("\r", "").splitlines():
@@ -60,7 +85,103 @@ def _looks_like_heading(line: str) -> bool:
         return False
     if "?" in line or line.endswith("."):
         return False
-    return bool(ALL_CAPS_RE.fullmatch(line))
+    letters = [character for character in line if character.isalpha()]
+    return len(letters) >= 4 and all(
+        character.isupper() for character in letters
+    )
+
+
+def _is_ignored_heading(line: str, article_title: str) -> bool:
+    normalized = line.strip()
+    return (
+        normalized == article_title
+        or normalized.upper() == "TEMA"
+        or normalized.upper() == "LA ATALAYA"
+        or normalized.lower().startswith("canción")
+        or bool(STUDY_DATE_RE.match(normalized))
+        or bool(
+            re.fullmatch(
+                r"(?:ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|"
+                r"AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)"
+                r"\s+DE\s+\d{4}",
+                normalized,
+                re.IGNORECASE,
+            )
+        )
+        or bool(re.fullmatch(r"\([A-ZÁÉÍÓÚÜÑ. ]+\s+\d+:[^)]+\)\.?", normalized))
+    )
+
+
+def _subtitle_map(
+    lines: list[str],
+    article_title: str,
+) -> dict[int, str]:
+    active_subtitle = ""
+    previous_was_subtitle = False
+    subtitles: dict[int, str] = {}
+
+    for line in lines:
+        if REVIEW_HEADING_RE.fullmatch(line):
+            break
+        if _looks_like_heading(line) and not _is_ignored_heading(
+            line,
+            article_title,
+        ):
+            active_subtitle = (
+                f"{active_subtitle} {line}".strip()
+                if previous_was_subtitle
+                else line
+            )
+            previous_was_subtitle = True
+            continue
+        if _is_ignored_heading(line, article_title):
+            previous_was_subtitle = False
+            continue
+        previous_was_subtitle = False
+        paragraph = PARAGRAPH_RE.match(line)
+        if paragraph and not QUESTION_PREFIX_RE.match(line):
+            subtitles[int(paragraph.group("number"))] = active_subtitle
+
+    return subtitles
+
+
+def _review_from_lines(lines: list[str]) -> tuple[list[str], int | None]:
+    review_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if REVIEW_HEADING_RE.fullmatch(line)
+        ),
+        None,
+    )
+    if review_index is None:
+        return [], None
+
+    questions: list[str] = []
+    current: list[str] = []
+    for line in lines[review_index + 1:]:
+        if line.lower().startswith("canción"):
+            break
+        numbered = QUESTION_PREFIX_RE.match(line)
+        plain = PLAIN_QUESTION_RE.match(line)
+        if numbered or plain:
+            if current:
+                questions.append(" ".join(current).strip())
+            current = [
+                numbered.group("question").strip()
+                if numbered
+                else plain.group(1).strip()
+            ]
+        elif current:
+            current.append(line)
+
+        if current and current[-1].rstrip().endswith("?"):
+            questions.append(" ".join(current).strip())
+            current = []
+
+    if current:
+        questions.append(" ".join(current).strip())
+    return questions, review_index
 
 
 def _find_title(lines: list[str], metadata_title: str = "") -> str:
@@ -81,6 +202,7 @@ def _find_title(lines: list[str], metadata_title: str = "") -> str:
 def _paragraphs_from_lines(
     lines: list[str],
     excluded_line_indexes: set[int],
+    article_title: str = "",
 ) -> list[ArticleParagraph]:
     paragraphs: list[ArticleParagraph] = []
     current: ArticleParagraph | None = None
@@ -110,6 +232,42 @@ def _paragraphs_from_lines(
     if current:
         paragraphs.append(current)
 
+    first_numbered = next(
+        (paragraph for paragraph in paragraphs if paragraph.number is not None),
+        None,
+    )
+    if first_numbered and first_numbered.number == 2:
+        first_numbered_index = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if (match := PARAGRAPH_RE.match(line))
+                and int(match.group("number")) == 2
+            ),
+            0,
+        )
+        initial_lines = [
+            line
+            for index, line in enumerate(lines[:first_numbered_index])
+            if index not in excluded_line_indexes
+            and line != article_title
+            and not _looks_like_heading(line)
+            and not STUDY_DATE_RE.match(line)
+            and not line.lower().startswith(("canción", "tema"))
+        ]
+        initial_text = " ".join(initial_lines).strip()
+        if initial_text:
+            paragraphs.insert(
+                0,
+                ArticleParagraph(
+                    number=1,
+                    text=initial_text,
+                    scripture_references=extract_scripture_references(
+                        initial_text
+                    ),
+                ),
+            )
+
     unique: dict[int, ArticleParagraph] = {}
     unnumbered: list[ArticleParagraph] = []
     for paragraph in paragraphs:
@@ -130,6 +288,11 @@ def _questions_from_lines(
     while index < len(lines):
         line = lines[index]
         numbered = QUESTION_START_RE.match(line)
+        if not numbered:
+            prefix = QUESTION_PREFIX_RE.match(line)
+            next_line = lines[index + 1] if index + 1 < len(lines) else ""
+            if prefix and next_line.lstrip().startswith("¿"):
+                numbered = prefix
 
         if numbered:
             question_parts = [numbered.group("question").strip()]
@@ -144,8 +307,27 @@ def _questions_from_lines(
                     cursor += 1
                     break
 
+                next_question = QUESTION_START_RE.match(candidate)
+                if not next_question:
+                    prefix = QUESTION_PREFIX_RE.match(candidate)
+                    following = (
+                        lines[cursor + 1]
+                        if cursor + 1 < len(lines)
+                        else ""
+                    )
+                    if prefix and following.lstrip().startswith("¿"):
+                        next_question = prefix
+                if next_question:
+                    break
+
+                if (
+                    question_parts[-1].rstrip().endswith("?")
+                    and not QUESTION_PART_RE.match(candidate)
+                ):
+                    break
+
                 paragraph = PARAGRAPH_RE.match(candidate)
-                if paragraph and not QUESTION_START_RE.match(candidate):
+                if paragraph:
                     break
 
                 question_parts.append(candidate)
@@ -166,30 +348,27 @@ def _questions_from_lines(
 
         plain = PLAIN_QUESTION_RE.match(line)
         if plain:
-            question = plain.group(1).strip()
             previous = lines[index - 1] if index > 0 else ""
             previous_numbers = re.fullmatch(
                 r"\s*(\d{1,2}(?:\s*[-–,]\s*\d{1,2})*)\s*", previous
             )
-            numbers = (
-                _question_numbers(previous_numbers.group(1))
-                if previous_numbers
-                else []
-            )
-            questions.append(
-                {
-                    "question": question,
-                    "paragraph_numbers": numbers,
-                    "line_index": index,
-                }
-            )
-            excluded_line_indexes.add(index)
+            if previous_numbers:
+                questions.append(
+                    {
+                        "question": plain.group(1).strip(),
+                        "paragraph_numbers": _question_numbers(
+                            previous_numbers.group(1)
+                        ),
+                        "line_index": index,
+                    }
+                )
+                excluded_line_indexes.add(index)
 
-            if (
-                index + 1 < len(lines)
-                and ANSWER_LABEL_RE.fullmatch(lines[index + 1])
-            ):
-                excluded_line_indexes.add(index + 1)
+                if (
+                    index + 1 < len(lines)
+                    and ANSWER_LABEL_RE.fullmatch(lines[index + 1])
+                ):
+                    excluded_line_indexes.add(index + 1)
 
         elif ANSWER_LABEL_RE.fullmatch(line):
             excluded_line_indexes.add(index)
@@ -210,6 +389,7 @@ def _assign_sections(
     questions: list[dict[str, Any]],
     paragraphs: list[ArticleParagraph],
     headings: list[str],
+    subtitles: dict[int, str] | None = None,
 ) -> tuple[list[ArticleSection], list[ArticleParagraph], list[str]]:
     paragraph_map = {
         p.number: p for p in paragraphs if p.number is not None
@@ -244,15 +424,25 @@ def _assign_sections(
                 if ref not in references:
                     references.append(ref)
 
-        heading = headings[min(index - 1, len(headings) - 1)] if headings else ""
+        subtitle = next(
+            (
+                (subtitles or {}).get(number, "")
+                for number in numbers
+                if (subtitles or {}).get(number, "")
+            ),
+            "",
+        )
         sections.append(
-            ArticleSection(
+            ParsedArticleSection(
                 number=index,
                 question=question["question"],
                 paragraph_numbers=[p.number for p in selected if p.number is not None],
                 paragraphs=selected,
                 scripture_references=references,
-                heading=heading,
+                heading=subtitle,
+                subtitle=subtitle,
+                questions=[question["question"]],
+                section_summary=None,
             )
         )
 
@@ -275,9 +465,21 @@ def parse_article(pdf_result: dict[str, Any]) -> Article:
         )
 
     title = _find_title(lines, pdf_result.get("title", ""))
-    headings = [line for line in lines if _looks_like_heading(line)]
-    questions, excluded_line_indexes = _questions_from_lines(lines)
-    paragraphs = _paragraphs_from_lines(lines, excluded_line_indexes)
+    review_questions, review_index = _review_from_lines(lines)
+    article_lines = lines[:review_index] if review_index is not None else lines
+    headings = [
+        line
+        for line in article_lines
+        if _looks_like_heading(line)
+        and not _is_ignored_heading(line, title)
+    ]
+    subtitles = _subtitle_map(article_lines, title)
+    questions, excluded_line_indexes = _questions_from_lines(article_lines)
+    paragraphs = _paragraphs_from_lines(
+        article_lines,
+        excluded_line_indexes,
+        article_title=title,
+    )
 
     if not paragraphs:
         raise ArticleParserError(
@@ -289,7 +491,10 @@ def parse_article(pdf_result: dict[str, Any]) -> Article:
         )
 
     sections, unassigned, warnings = _assign_sections(
-        questions, paragraphs, headings
+        questions,
+        paragraphs,
+        headings,
+        subtitles,
     )
 
     first_numbered_index = next(
@@ -323,7 +528,7 @@ def parse_article(pdf_result: dict[str, Any]) -> Article:
             f"Quedaron {len(unassigned)} párrafos sin asignar a una pregunta."
         )
 
-    return Article(
+    return ParsedArticle(
         title=title,
         introduction=introduction,
         sections=sections,
@@ -331,4 +536,5 @@ def parse_article(pdf_result: dict[str, Any]) -> Article:
         detected_headings=headings,
         unassigned_paragraphs=unassigned,
         parser_warnings=warnings,
+        review_questions=review_questions,
     )
