@@ -24,6 +24,13 @@ def copy_required(source, destination, label):
 
 def create_project(name, base_folder, pdf_path, audio_path, bible_path) -> Project:
     safe_name = slugify(name)
+    audio_suffix = Path(audio_path).suffix.lower()
+    if audio_suffix not in {".mp3", ".wav", ".m4a"}:
+        raise ProjectError("El audio debe ser MP3, WAV o M4A.")
+    bible_suffix = Path(bible_path).suffix.lower()
+    if bible_suffix not in {".txt", ".docx", ".pdf"}:
+        raise ProjectError("El archivo de citas debe ser TXT, DOCX o PDF.")
+
     base = Path(base_folder).expanduser()
     base.mkdir(parents=True, exist_ok=True)
     root = base / safe_name
@@ -39,8 +46,14 @@ def create_project(name, base_folder, pdf_path, audio_path, bible_path) -> Proje
 
     try:
         pdf_rel = copy_required(pdf_path, source / "articulo.pdf", "PDF")
-        audio_rel = copy_required(audio_path, source / "audio.mp3", "audio")
-        bible_rel = copy_required(bible_path, source / "citas.txt", "citas bíblicas")
+        audio_rel = copy_required(
+            audio_path, source / f"audio{audio_suffix}", "audio"
+        )
+        bible_rel = copy_required(
+            bible_path,
+            source / f"citas{bible_suffix}",
+            "citas bíblicas",
+        )
         now = datetime.now().astimezone().isoformat(timespec="seconds")
         project = Project(
             name=safe_name,
