@@ -132,6 +132,35 @@ class RegenerateAnswerUseCaseTests(unittest.TestCase):
             original,
         )
 
+    def test_appends_missing_answer_in_numeric_order(self):
+        self.write_json(
+            "master.json",
+            {
+                "title": "MASTER",
+                "answers": [self.master["answers"][1]],
+                "generated_at": "anterior",
+            },
+        )
+        calls = []
+        use_case = self.make_use_case(
+            lambda article, master: FakeReport(valid=True),
+            calls,
+        )
+
+        replacement = use_case.execute(self.project, 1)
+
+        self.assertEqual(calls[0]["operation"], "regenerate")
+        self.assertEqual(calls[0]["existing_answer"], {})
+        self.assertEqual(replacement["number"], 1)
+        saved = self.load_json(self.work_dir / "master.json")
+        self.assertEqual(
+            [answer["number"] for answer in saved["answers"]],
+            [1, 2],
+        )
+        self.assertEqual(saved["answers"][0]["answer"], "Regenerada")
+        self.assertEqual(saved["answers"][1]["answer"], "Conservar")
+        self.assertTrue((self.work_dir / "master_validacion.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

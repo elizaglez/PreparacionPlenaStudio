@@ -138,6 +138,61 @@ class GenerateMasterUseCaseTests(unittest.TestCase):
         self.assertFalse((self.work_dir / "master.json").exists())
         self.assertEqual(saved_projects, [])
 
+    def test_rejects_missing_project_directory(self):
+        calls = []
+        saved_projects = []
+        self.project.root = str(self.root / "missing")
+        use_case = self.make_use_case(
+            lambda article, master: FakeReport(valid=True),
+            calls,
+            saved_projects,
+        )
+
+        with self.assertRaisesRegex(
+            UseCaseError,
+            "La carpeta del proyecto no existe",
+        ):
+            use_case.execute(self.project)
+
+        self.assertEqual(calls, [])
+        self.assertEqual(saved_projects, [])
+        self.assertFalse((self.work_dir / "master.json").exists())
+        self.assertFalse((self.work_dir / "master_validacion.json").exists())
+
+    def test_rejects_article_without_structured_sections(self):
+        invalid_articles = (
+            {},
+            {"sections": []},
+            {"sections": {}},
+        )
+
+        for article in invalid_articles:
+            with self.subTest(article=article):
+                (self.work_dir / "articulo.json").write_text(
+                    json.dumps(article, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                calls = []
+                saved_projects = []
+                use_case = self.make_use_case(
+                    lambda loaded_article, master: FakeReport(valid=True),
+                    calls,
+                    saved_projects,
+                )
+
+                with self.assertRaisesRegex(
+                    UseCaseError,
+                    "articulo.json no contiene preguntas estructuradas",
+                ):
+                    use_case.execute(self.project)
+
+                self.assertEqual(calls, [])
+                self.assertEqual(saved_projects, [])
+                self.assertFalse((self.work_dir / "master.json").exists())
+                self.assertFalse(
+                    (self.work_dir / "master_validacion.json").exists()
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

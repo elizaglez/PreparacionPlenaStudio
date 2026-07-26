@@ -168,6 +168,27 @@ class RegenerateStageUseCaseTests(unittest.TestCase):
             original,
         )
 
+    def test_rejects_unknown_question(self):
+        calls = []
+        original = (self.work_dir / "master.json").read_text(encoding="utf-8")
+        use_case = self.make_use_case(
+            lambda article, master: FakeReport(valid=True),
+            calls,
+        )
+
+        with self.assertRaisesRegex(
+            UseCaseError,
+            "No existe la pregunta número 99",
+        ):
+            use_case.execute(self.project, 99, "application")
+
+        self.assertEqual(calls, [])
+        self.assertFalse((self.work_dir / "master_validacion.json").exists())
+        self.assertEqual(
+            (self.work_dir / "master.json").read_text(encoding="utf-8"),
+            original,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
