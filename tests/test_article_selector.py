@@ -30,8 +30,10 @@ class ArticleSelectorTests(unittest.TestCase):
                     1,
                     "\n".join(
                         [
-                            "CANCIÓN 1 Cantemos",
                             "Primer artículo",
+                            "“Texto temático del primer artículo”.",
+                            "1-7 DE JULIO DE 2026",
+                            "CANCIÓN 1 Cantemos",
                             "TEMA",
                             "Tema del primer artículo.",
                             "1. ¿Qué aprendemos?",
@@ -43,8 +45,10 @@ class ArticleSelectorTests(unittest.TestCase):
                     3,
                     "\n".join(
                         [
-                            "CANCIÓN 2 Alabemos",
                             "Segundo artículo",
+                            "“Texto temático del segundo artículo”.",
+                            "8-14 DE JULIO DE 2026",
+                            "CANCIÓN 2 Alabemos",
                             "TEMA",
                             "Tema del segundo artículo.",
                             "1. ¿Cómo lo aplicamos?",

@@ -23,10 +23,10 @@ class ArticleDetectorTests(unittest.TestCase):
                 page(
                     3,
                     """
-27 DE JULIO-2 DE AGOSTO DE 2026
-CANCIÓN 56 Vive la verdad
 Cuida tu espiritualidad mientras cursas estudios adicionales
 “Sigamos andando correctamente por ese mismo camino”.
+27 DE JULIO-2 DE AGOSTO DE 2026
+CANCIÓN 56 Vive la verdad
 TEMA
 Cuatro principios bíblicos que pueden ayudarte.
 1, 2. a) Si continúas estudiando, ¿de qué tendrás que asegurarte?
@@ -37,10 +37,10 @@ Cuatro principios bíblicos que pueden ayudarte.
                 page(
                     6,
                     """
-3-9 DE AGOSTO DE 2026
-CANCIÓN 12 Una esperanza segura
 Mantengamos firme nuestra esperanza
 “Mantengan firmemente su esperanza”.
+3-9 DE AGOSTO DE 2026
+CANCIÓN 12 Una esperanza segura
 TEMA
 Cómo fortalecer nuestra esperanza.
 1. ¿Por qué necesitamos una esperanza firme?
@@ -80,9 +80,9 @@ Cómo fortalecer nuestra esperanza.
                     5,
                     """
 ARTÍCULO DE ESTUDIO 30
-CANCIÓN 10 Jehová es nuestro refugio
 Confiemos siempre en Jehová
 “Él es nuestro refugio”.
+CANCIÓN 10 Jehová es nuestro refugio
 TEMA
 Razones para confiar en Jehová.
 1. ¿Por qué debemos seguir confiando
@@ -96,7 +96,40 @@ en Jehová durante las pruebas?
         candidates = detect_articles(pdf_result)
 
         self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["title"], "Confiemos siempre en Jehová")
         self.assertEqual(candidates[0]["question_count"], 2)
+
+    def test_ignores_song_title_between_song_number_and_theme(self):
+        pdf_result = {
+            "pages": [
+                page(
+                    20,
+                    """
+1, 2. ¿Qué aprenderemos en este artículo?
+¿Por qué son importantes
+los principios bíblicos?
+“Darán un servicio sagrado con su capacidad de razonar”.
+6-12 DE JULIO DE 2026
+CANCIÓN 98
+Las Escrituras están inspiradas por Dios
+TEMA
+Qué son los principios bíblicos.
+""",
+                )
+            ]
+        }
+
+        candidates = detect_articles(pdf_result)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(
+            candidates[0]["title"],
+            "¿Por qué son importantes los principios bíblicos?",
+        )
+        self.assertNotEqual(
+            candidates[0]["title"],
+            "Las Escrituras están inspiradas por Dios",
+        )
 
     def test_ignores_incomplete_start_signature(self):
         pdf_result = {

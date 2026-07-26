@@ -31,12 +31,36 @@ def _lines(page: dict[str, Any]) -> list[str]:
 
 
 def _title_from_lines(lines: list[str], song_index: int) -> str:
+    quote_index = next(
+        (
+            index
+            for index in range(song_index - 1, -1, -1)
+            if OPENING_QUOTE_RE.match(lines[index])
+        ),
+        None,
+    )
+    if quote_index is None:
+        quote_index = next(
+            (
+                index
+                for index in range(song_index - 1, -1, -1)
+                if DATE_RE.match(lines[index])
+            ),
+            song_index,
+        )
+
     title_parts: list[str] = []
-    for line in lines[song_index + 1:]:
-        if THEME_RE.fullmatch(line) or OPENING_QUOTE_RE.match(line):
+    for line in reversed(lines[max(0, quote_index - 4):quote_index]):
+        if (
+            STUDY_ARTICLE_RE.match(line)
+            or STUDY_QUESTION_RE.match(line)
+            or re.match(r"^\d{1,2}[.)]?\s+", line)
+            or (title_parts and "?" in line and "¿" not in line)
+        ):
             break
         title_parts.append(line)
-    return " ".join(title_parts).strip()
+
+    return " ".join(reversed(title_parts)).strip()
 
 
 def _start_candidate(page: dict[str, Any]) -> dict[str, Any] | None:
@@ -59,7 +83,7 @@ def _start_candidate(page: dict[str, Any]) -> dict[str, Any] | None:
     if theme_index is None or theme_index - song_index > 15:
         return None
 
-    title = _title_from_lines(lines[:theme_index], song_index)
+    title = _title_from_lines(lines, song_index)
     if not title:
         return None
 
