@@ -4,6 +4,56 @@ from app.parsers.article_parser import parse_article
 
 
 class ArticleParserTests(unittest.TestCase):
+    def test_detects_box_and_keeps_it_out_of_article_structure(self):
+        sample = {
+            "title": "Respetemos las decisiones de los demás",
+            "text": """
+Respetemos las decisiones de los demás
+TEMA
+Cómo respetar las decisiones ajenas.
+PRIMER PUNTO
+1 Este párrafo recomienda pensar con cuidado. Vea también el recuadro “Si una decisión le parece mal”.
+1. ¿Qué debemos hacer antes de juzgar una decisión?
+Si una decisión le parece mal
+Hágase las siguientes preguntas.
+˙ ¿Viola algún mandato bíblico?
+˙ ¿Estoy imaginándome lo peor?
+LA ATALAYA
+SEGUNDO PUNTO
+2 Debemos respetar el derecho de los demás a decidir.
+2. ¿Qué derecho debemos respetar?
+""",
+        }
+
+        article = parse_article(sample)
+        data = article.to_dict()
+
+        self.assertEqual(len(article.boxes), 1)
+        self.assertEqual(article.boxes[0].title, "Si una decisión le parece mal")
+        self.assertEqual(article.boxes[0].linked_paragraph, 1)
+        self.assertEqual(
+            article.boxes[0].content,
+            [
+                "Hágase las siguientes preguntas.",
+                "¿Viola algún mandato bíblico?",
+                "¿Estoy imaginándome lo peor?",
+            ],
+        )
+        self.assertEqual(article.boxes[0].type, "reflection")
+        self.assertEqual(data["boxes"][0]["linked_paragraph"], 1)
+
+        paragraph_numbers = {
+            paragraph.number
+            for section in article.sections
+            for paragraph in section.paragraphs
+        }
+        self.assertEqual(paragraph_numbers, {1, 2})
+        self.assertEqual(len(article.sections), 2)
+        self.assertNotIn(
+            "Si una decisión le parece mal",
+            [section.subtitle for section in article.sections],
+        )
+
     def test_detects_subtitles_summaries_and_review_questions(self):
         sample = {
             "title": "CUIDEMOS NUESTRA AMISTAD CON JEHOVÁ",

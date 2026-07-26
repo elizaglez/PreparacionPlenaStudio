@@ -20,8 +20,17 @@ class ParsedArticleSection(ArticleSection):
 
 
 @dataclass
+class ArticleBox:
+    title: str
+    linked_paragraph: int
+    content: list[str] = field(default_factory=list)
+    type: str = "reflection"
+
+
+@dataclass
 class ParsedArticle(Article):
     review_questions: list[str] = field(default_factory=list)
+    boxes: list[ArticleBox] = field(default_factory=list)
 
 
 PARAGRAPH_RE = re.compile(
@@ -46,6 +55,11 @@ PAGE_MARKER_RE = re.compile(
 ANSWER_LABEL_RE = re.compile(r"^Respuestas?$", re.IGNORECASE)
 REVIEW_HEADING_RE = re.compile(
     r"^(?:REPASO|PREGUNTAS\s+DE\s+REPASO)$",
+    re.IGNORECASE,
+)
+BOX_REFERENCE_RE = re.compile(
+    r"(?:vea|consulte)(?:\s+también)?\s+el\s+recuadro\s+"
+    r"[“\"](?P<title>.+?)[”\"]",
     re.IGNORECASE,
 )
 STUDY_DATE_RE = re.compile(
@@ -182,6 +196,90 @@ def _review_from_lines(lines: list[str]) -> tuple[list[str], int | None]:
     if current:
         questions.append(" ".join(current).strip())
     return questions, review_index
+
+
+def _box_content(lines: list[str]) -> list[str]:
+    content: list[str] = []
+    current: list[str] = []
+
+    for line in lines:
+        if line.startswith("˙"):
+            if current:
+                content.append(" ".join(current).strip())
+            current = [line.lstrip("˙ ")]
+        elif current:
+            current.append(line)
+        else:
+            current = [line]
+
+    if current:
+        content.append(" ".join(current).strip())
+    return [item for item in content if item]
+
+
+def _boxes_from_lines(
+    lines: list[str],
+) -> tuple[list[ArticleBox], set[int]]:
+    boxes: list[ArticleBox] = []
+    excluded_indexes: set[int] = set()
+
+    for index, line in enumerate(lines):
+        if "recuadro" not in line.casefold():
+            continue
+        reference_text = " ".join(lines[index:min(len(lines), index + 4)])
+        reference = BOX_REFERENCE_RE.search(reference_text)
+        if not reference:
+            continue
+
+        title = re.sub(r"\s+", " ", reference.group("title")).strip()
+        linked_paragraph = 0
+        for reference_index in range(index, max(-1, index - 6), -1):
+            question = QUESTION_PREFIX_RE.match(lines[reference_index])
+            paragraph = PARAGRAPH_RE.match(lines[reference_index])
+            if question:
+                numbers = _question_numbers(question.group("numbers"))
+                linked_paragraph = numbers[0] if numbers else 0
+                break
+            if paragraph:
+                linked_paragraph = int(paragraph.group("number"))
+                break
+        if linked_paragraph < 1:
+            continue
+
+        title_index = next(
+            (
+                candidate_index
+                for candidate_index in range(index + 1, len(lines))
+                if lines[candidate_index].casefold() == title.casefold()
+            ),
+            None,
+        )
+        if title_index is None:
+            continue
+
+        end_index = title_index + 1
+        while end_index < len(lines):
+            candidate = lines[end_index]
+            if (
+                candidate.upper() == "LA ATALAYA"
+                or candidate.lower().startswith("canción")
+                or PARAGRAPH_RE.match(candidate)
+                or QUESTION_PREFIX_RE.match(candidate)
+            ):
+                break
+            end_index += 1
+
+        content_lines = lines[title_index + 1:end_index]
+        boxes.append(
+            ArticleBox(
+                title=title,
+                linked_paragraph=linked_paragraph,
+                content=_box_content(content_lines),
+            )
+        )
+        excluded_indexes.update(range(title_index, end_index))
+
+    return boxes, excluded_indexes
 
 
 def _find_title(lines: list[str], metadata_title: str = "") -> str:
@@ -467,6 +565,12 @@ def parse_article(pdf_result: dict[str, Any]) -> Article:
     title = _find_title(lines, pdf_result.get("title", ""))
     review_questions, review_index = _review_from_lines(lines)
     article_lines = lines[:review_index] if review_index is not None else lines
+    boxes, box_line_indexes = _boxes_from_lines(article_lines)
+    article_lines = [
+        line
+        for index, line in enumerate(article_lines)
+        if index not in box_line_indexes
+    ]
     headings = [
         line
         for line in article_lines
@@ -537,4 +641,5 @@ def parse_article(pdf_result: dict[str, Any]) -> Article:
         unassigned_paragraphs=unassigned,
         parser_warnings=warnings,
         review_questions=review_questions,
+        boxes=boxes,
     )
