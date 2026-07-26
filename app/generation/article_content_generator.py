@@ -90,7 +90,7 @@ class ArticleContentGenerator:
                 GeneratedBox(
                     title=box.title,
                     explanation=(
-                        self._provider.generate_box_explanation(box.title)
+                        self._provider.generate_box_explanation(box.content)
                         if box.explanation_required
                         else ""
                     ),

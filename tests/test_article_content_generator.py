@@ -1,16 +1,60 @@
 import unittest
 
 from app.ai.fake_provider import FakeAIProvider
+from app.generation.article_generation_plan import (
+    ArticleGenerationPlan,
+    GenerationSection,
+)
 from app.generation.article_content_generator import ArticleContentGenerator
 from app.generation.content_generation_request import (
     BoxGenerationRequest,
     ContentGenerationRequest,
     QuestionGenerationRequest,
     SectionGenerationRequest,
+    build_content_generation_request,
 )
 
 
+class RecordingFakeAIProvider(FakeAIProvider):
+    def __init__(self):
+        self.summary_inputs = []
+        self.box_explanation_inputs = []
+
+    def generate_summary(self, section_content: str) -> str:
+        self.summary_inputs.append(section_content)
+        return super().generate_summary(section_content)
+
+    def generate_box_explanation(self, box_content: str) -> str:
+        self.box_explanation_inputs.append(box_content)
+        return super().generate_box_explanation(box_content)
+
+
 class ArticleContentGeneratorTests(unittest.TestCase):
+    def test_request_preserves_complete_box_content_from_plan(self):
+        plan = ArticleGenerationPlan(
+            title="Título",
+            introduction="Introducción",
+            sections=[
+                GenerationSection(
+                    subtitle="SUBTÍTULO",
+                    boxes=[
+                        {
+                            "title": "Consejo práctico",
+                            "content": ["Primera parte", "Segunda parte"],
+                            "linked_paragraph": 5,
+                        }
+                    ],
+                )
+            ],
+        )
+
+        request = build_content_generation_request(plan)
+
+        box = request.sections[0].boxes[0]
+        self.assertEqual(box.title, "Consejo práctico")
+        self.assertEqual(box.content, "Primera parte\n\nSegunda parte")
+        self.assertEqual(box.linked_paragraph, 5)
+
     def test_generates_article_content_through_provider(self):
         request = ContentGenerationRequest(
             article_title="Título principal",
@@ -42,9 +86,10 @@ class ArticleContentGeneratorTests(unittest.TestCase):
                     ],
                     boxes=[
                         BoxGenerationRequest(
-                            title="Recuadro complementario",
+                            title="Consejo práctico",
                             explanation_required=True,
-                            linked_paragraph=2,
+                            linked_paragraph=5,
+                            content="Contenido completo del recuadro para explicar",
                         )
                     ],
                     needs_transition=True,
@@ -54,7 +99,8 @@ class ArticleContentGeneratorTests(unittest.TestCase):
             review_questions=["Pregunta de repaso"],
         )
 
-        generated = ArticleContentGenerator(FakeAIProvider()).generate(request)
+        provider = RecordingFakeAIProvider()
+        generated = ArticleContentGenerator(provider).generate(request)
 
         self.assertEqual(generated.title, "Título principal")
         self.assertEqual(
@@ -91,12 +137,17 @@ class ArticleContentGeneratorTests(unittest.TestCase):
 
         self.assertEqual(len(section.boxes), 1)
         box = section.boxes[0]
-        self.assertEqual(box.title, "Recuadro complementario")
-        self.assertEqual(box.linked_paragraph, 2)
+        self.assertEqual(box.title, "Consejo práctico")
+        self.assertEqual(box.linked_paragraph, 5)
         self.assertEqual(
             box.explanation,
             "Explicación simulada de recuadro para prueba",
         )
+        self.assertEqual(
+            provider.box_explanation_inputs,
+            ["Contenido completo del recuadro para explicar"],
+        )
+        self.assertEqual(provider.summary_inputs, ["Contenido de la sección"])
         self.assertEqual(generated.review_questions, ["Pregunta de repaso"])
 
     def test_respects_disabled_generation_flags(self):

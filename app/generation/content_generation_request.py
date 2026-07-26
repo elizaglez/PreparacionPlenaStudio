@@ -27,6 +27,7 @@ class BoxGenerationRequest:
     title: str
     explanation_required: bool
     linked_paragraph: int
+    content: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -72,11 +73,22 @@ def _question_requests(
 def _section_request(
     source: GenerationSection,
 ) -> SectionGenerationRequest:
+    def box_content(box: dict[str, Any]) -> str:
+        content = box.get("content", "")
+        if isinstance(content, list):
+            return "\n\n".join(
+                text
+                for item in content
+                if (text := str(item).strip())
+            )
+        return str(content).strip()
+
     boxes = [
         BoxGenerationRequest(
             title=str(box.get("title", "")).strip(),
             explanation_required=True,
             linked_paragraph=int(box.get("linked_paragraph", 0)),
+            content=box_content(box),
         )
         for box in source.boxes
     ]
