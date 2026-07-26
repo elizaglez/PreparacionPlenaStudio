@@ -93,7 +93,10 @@ class ArticleContentGeneratorTests(unittest.TestCase):
         box = section.boxes[0]
         self.assertEqual(box.title, "Recuadro complementario")
         self.assertEqual(box.linked_paragraph, 2)
-        self.assertEqual(box.explanation, "Resumen simulado para prueba")
+        self.assertEqual(
+            box.explanation,
+            "Explicación simulada de recuadro para prueba",
+        )
         self.assertEqual(generated.review_questions, ["Pregunta de repaso"])
 
     def test_respects_disabled_generation_flags(self):

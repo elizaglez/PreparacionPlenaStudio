@@ -23,5 +23,9 @@ class AIProvider(ABC):
         """Generate a summary of a section's content."""
 
     @abstractmethod
+    def generate_box_explanation(self, box_content: str) -> str:
+        """Generate an explanation of complementary box content."""
+
+    @abstractmethod
     def generate_heygen_transition(self, subtitle: str) -> str:
         """Generate a spoken transition for a titled section."""

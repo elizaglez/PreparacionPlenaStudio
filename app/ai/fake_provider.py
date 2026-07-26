@@ -19,5 +19,8 @@ class FakeAIProvider(AIProvider):
     def generate_summary(self, section_content: str) -> str:
         return "Resumen simulado para prueba"
 
+    def generate_box_explanation(self, box_content: str) -> str:
+        return "Explicación simulada de recuadro para prueba"
+
     def generate_heygen_transition(self, subtitle: str) -> str:
         return "Transición HeyGen simulada para prueba"

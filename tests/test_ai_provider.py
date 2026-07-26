@@ -14,6 +14,7 @@ class AIProviderTests(unittest.TestCase):
                 "generate_answer",
                 "generate_application",
                 "generate_summary",
+                "generate_box_explanation",
                 "generate_heygen_transition",
             },
         )
@@ -38,6 +39,10 @@ class AIProviderTests(unittest.TestCase):
         self.assertEqual(
             provider.generate_summary("Contenido de la sección"),
             "Resumen simulado para prueba",
+        )
+        self.assertEqual(
+            provider.generate_box_explanation("Contenido del recuadro"),
+            "Explicación simulada de recuadro para prueba",
         )
         self.assertEqual(
             provider.generate_heygen_transition("SUBTÍTULO"),
