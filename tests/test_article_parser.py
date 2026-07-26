@@ -114,6 +114,39 @@ OTRA SECCIÓN
         self.assertNotIn(2, unassigned_numbers)
         self.assertIn(3, unassigned_numbers)
 
+    def test_does_not_treat_date_heading_as_paragraph(self):
+        sample = {
+            "title": "Cuida tu espiritualidad mientras cursas estudios adicionales",
+            "text": """
+=== PÁGINA 1 ===
+27 DE JULIO-2 DE AGOSTO DE 2026
+CANCIÓN 56 Vive la verdad
+Cuida tu espiritualidad mientras cursas estudios adicionales
+“Sigamos andando correctamente por ese mismo camino” (FILIP. 3:16).
+TEMA
+Cuatro principios bíblicos que protegerán tu amistad con Jehová.
+1. ¿De qué tendrás que asegurarte?
+Respuesta
+1 Debes mantener una estrecha relación con Jehová.
+SEGUNDO PRINCIPIO
+2. ¿Qué más debes hacer?
+Respuesta
+2 Mantén un buen programa de actividades espirituales.
+""",
+        }
+
+        article = parse_article(sample)
+
+        self.assertEqual(len(article.sections), 2)
+        self.assertEqual(article.sections[0].paragraph_numbers, [1])
+        self.assertEqual(article.sections[1].paragraph_numbers, [2])
+        self.assertEqual(article.unassigned_paragraphs, [])
+        self.assertEqual(article.conclusion, "")
+        self.assertNotIn(
+            "Quedaron 1 párrafos sin asignar a una pregunta.",
+            article.parser_warnings,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

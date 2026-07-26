@@ -89,6 +89,9 @@ def _paragraphs_from_lines(
         if index in excluded_line_indexes:
             continue
 
+        if _looks_like_heading(line):
+            continue
+
         match = PARAGRAPH_RE.match(line)
         if match:
             if current:
@@ -290,7 +293,12 @@ def parse_article(pdf_result: dict[str, Any]) -> Article:
     )
 
     first_numbered_index = next(
-        (i for i, line in enumerate(lines) if PARAGRAPH_RE.match(line)),
+        (
+            i
+            for i, line in enumerate(lines)
+            if PARAGRAPH_RE.match(line)
+            and not _looks_like_heading(line)
+        ),
         0,
     )
     introduction_lines = [
