@@ -1,6 +1,7 @@
 import ast
 import inspect
 import unittest
+from unittest.mock import patch
 
 from app.ai.config import AIProviderConfig
 from app.ai.fake_provider import FakeAIProvider
@@ -51,6 +52,48 @@ class ArticleContentServiceTests(unittest.TestCase):
         )
         self.assertIsInstance(service._generator, ArticleContentGenerator)
         self.assertIsInstance(service._generator._provider, FakeAIProvider)
+
+    def test_accepts_and_uses_injected_provider(self):
+        provider = FakeAIProvider()
+        service = ArticleContentService(provider)
+        request = ContentGenerationRequest(
+            article_title="Título inyectado",
+            introduction=SectionGenerationRequest(
+                subtitle=None,
+                paragraphs=[{"number": 1, "text": "Contexto"}],
+                questions=[
+                    QuestionGenerationRequest(
+                        number=1,
+                        question="Pregunta",
+                        source_paragraphs=[1],
+                    )
+                ],
+            ),
+        )
+
+        generated = service.generate(request)
+
+        self.assertIs(service._generator._provider, provider)
+        self.assertEqual(generated.title, "Título inyectado")
+        self.assertEqual(
+            generated.introduction.questions[0].answer,
+            "Respuesta simulada para prueba",
+        )
+
+    def test_injected_provider_does_not_use_provider_factory(self):
+        provider = FakeAIProvider()
+
+        with patch(
+            "app.article_content_service.create_provider"
+        ) as create_provider_mock:
+            service = ArticleContentService(provider)
+
+        create_provider_mock.assert_not_called()
+        self.assertIs(service._generator._provider, provider)
+
+    def test_named_provider_still_requires_config(self):
+        with self.assertRaisesRegex(TypeError, "config es obligatorio"):
+            ArticleContentService("fake")
 
     def test_composes_openai_provider_with_same_config(self):
         service = ArticleContentService("openai", self.config)
