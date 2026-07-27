@@ -1,23 +1,34 @@
 from __future__ import annotations
 
-from typing import NoReturn
-
 from app.ai.config import AIProviderConfig
 from app.ai.errors import AIProviderConfigurationError
+from app.ai.openai_client_port import OpenAIClientPort
 from app.ai.provider import AIProvider
 
 
 class OpenAIProvider(AIProvider):
     """Prepared OpenAI adapter with no external integration yet."""
 
-    def __init__(self, config: AIProviderConfig) -> None:
+    def __init__(
+        self,
+        config: AIProviderConfig,
+        client: OpenAIClientPort | None = None,
+    ) -> None:
         self.config = config
+        self.client = client
 
-    @staticmethod
-    def _not_implemented(operation: str) -> NoReturn:
-        raise AIProviderConfigurationError(
-            "El proveedor OpenAI todavía no implementa la operación "
-            f"{operation!r}."
+    def _generate_text(self, input_text: str) -> str:
+        if self.client is None:
+            raise AIProviderConfigurationError(
+                "OpenAIProvider necesita un cliente compatible con "
+                "OpenAIClientPort."
+            )
+        return self.client.generate_text(
+            model=self.config.model,
+            input_text=input_text,
+            temperature=self.config.temperature,
+            max_output_tokens=self.config.max_output_tokens,
+            timeout_seconds=self.config.timeout_seconds,
         )
 
     def generate_answer(
@@ -25,16 +36,16 @@ class OpenAIProvider(AIProvider):
         question: str,
         context: list[str],
     ) -> str:
-        self._not_implemented("generate_answer")
+        return self._generate_text("\n\n".join([question, *context]))
 
     def generate_application(self, answer: str) -> str:
-        self._not_implemented("generate_application")
+        return self._generate_text(answer)
 
     def generate_summary(self, section_content: str) -> str:
-        self._not_implemented("generate_summary")
+        return self._generate_text(section_content)
 
     def generate_box_explanation(self, box_content: str) -> str:
-        self._not_implemented("generate_box_explanation")
+        return self._generate_text(box_content)
 
     def generate_heygen_transition(self, subtitle: str) -> str:
-        self._not_implemented("generate_heygen_transition")
+        return self._generate_text(subtitle)
