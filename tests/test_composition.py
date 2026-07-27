@@ -4,6 +4,9 @@ import sys
 import unittest
 
 from app.ai.config import AIProviderConfig
+from app.ai.fake_openai_client import FakeOpenAIClient
+from app.ai.openai_client_adapter import OpenAIClientAdapter
+from app.ai.openai_provider import OpenAIProvider
 from app.article_content_service import ArticleContentService
 from app.composition import create_article_content_service
 from app.generation.content_generation_request import (
@@ -52,6 +55,66 @@ class CompositionTests(unittest.TestCase):
         self.assertEqual(
             generated.introduction.questions[0].answer,
             "Respuesta simulada para prueba",
+        )
+
+    def test_composes_openai_provider_with_external_fake_client(self):
+        fake_client = FakeOpenAIClient()
+
+        service = create_article_content_service(
+            "openai",
+            self.config,
+            openai_client=fake_client,
+        )
+
+        provider = service._generator._provider
+        self.assertIsInstance(provider, OpenAIProvider)
+        self.assertIs(provider.config, self.config)
+        self.assertIsInstance(provider.client, OpenAIClientAdapter)
+        self.assertIs(provider.client.client, fake_client)
+
+    def test_composed_openai_service_generates_through_fake_client(self):
+        fake_client = FakeOpenAIClient()
+        service = create_article_content_service(
+            "openai",
+            self.config,
+            openai_client=fake_client,
+        )
+        request = ContentGenerationRequest(
+            article_title="Artículo OpenAI simulado",
+            introduction=SectionGenerationRequest(
+                subtitle=None,
+                paragraphs=[{"number": 1, "text": "Contexto fuente"}],
+                questions=[
+                    QuestionGenerationRequest(
+                        number=1,
+                        question="Pregunta de prueba",
+                        source_paragraphs=[1],
+                    )
+                ],
+            ),
+        )
+
+        generated = service.generate(request)
+
+        self.assertEqual(generated.title, "Artículo OpenAI simulado")
+        self.assertEqual(
+            generated.introduction.questions[0].answer,
+            "Fake AI response",
+        )
+        self.assertEqual(
+            generated.introduction.questions[0].application,
+            "Fake AI response",
+        )
+        self.assertEqual(len(fake_client.calls), 2)
+        self.assertEqual(
+            fake_client.calls[0],
+            {
+                "model": "modelo-prueba",
+                "input_text": "Pregunta de prueba\n\nContexto fuente",
+                "temperature": 0.5,
+                "max_output_tokens": 1000,
+                "timeout_seconds": 30.0,
+            },
         )
 
     def test_composition_has_no_sdk_prompt_or_secret_dependencies(self):

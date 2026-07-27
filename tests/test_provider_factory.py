@@ -6,6 +6,7 @@ import unittest
 
 from app.ai.config import AIProviderConfig
 from app.ai.errors import AIProviderConfigurationError
+from app.ai.fake_openai_client import FakeOpenAIClient
 from app.ai.provider import AIProvider
 from app.ai.provider_factory import create_provider
 
@@ -33,6 +34,30 @@ class AIProviderFactoryTests(unittest.TestCase):
         self.assertIsInstance(provider, AIProvider)
         self.assertIsInstance(provider, OpenAIProvider)
         self.assertIs(provider.config, self.config)
+
+    def test_passes_external_client_to_openai_provider(self):
+        client = FakeOpenAIClient()
+
+        provider = create_provider(
+            "openai",
+            self.config,
+            openai_client=client,
+        )
+
+        self.assertIs(provider.client, client)
+
+    def test_fake_provider_does_not_use_openai_client(self):
+        client = FakeOpenAIClient()
+
+        provider = create_provider(
+            "fake",
+            self.config,
+            openai_client=client,
+        )
+        from app.ai.fake_provider import FakeAIProvider
+
+        self.assertIsInstance(provider, FakeAIProvider)
+        self.assertFalse(client.calls)
 
     def test_normalizes_provider_name(self):
         from app.ai.fake_provider import FakeAIProvider
