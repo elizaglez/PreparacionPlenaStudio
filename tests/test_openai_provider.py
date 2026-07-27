@@ -2,16 +2,27 @@ import ast
 import inspect
 import unittest
 
+from app.ai.config import AIProviderConfig
 from app.ai.errors import AIProviderConfigurationError, AIProviderError
 from app.ai.openai_provider import OpenAIProvider
 from app.ai.provider import AIProvider
+from app.generation.article_content_generator import ArticleContentGenerator
 
 
 class OpenAIProviderTests(unittest.TestCase):
     def test_implements_complete_provider_contract(self):
         self.assertTrue(issubclass(OpenAIProvider, AIProvider))
         self.assertFalse(inspect.isabstract(OpenAIProvider))
-        provider = OpenAIProvider()
+        config = AIProviderConfig(
+            model="modelo-prueba",
+            timeout_seconds=30.0,
+            temperature=0.5,
+            max_output_tokens=1000,
+        )
+        provider = OpenAIProvider(config)
+
+        self.assertIs(provider.config, config)
+        self.assertIsInstance(ArticleContentGenerator(provider), ArticleContentGenerator)
 
         operations = [
             lambda: provider.generate_answer("Pregunta", ["Contexto"]),

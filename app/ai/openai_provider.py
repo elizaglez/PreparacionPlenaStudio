@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from typing import NoReturn
 
+from app.ai.config import AIProviderConfig
 from app.ai.errors import AIProviderConfigurationError
 from app.ai.provider import AIProvider
 
 
 class OpenAIProvider(AIProvider):
     """Prepared OpenAI adapter with no external integration yet."""
+
+    def __init__(self, config: AIProviderConfig) -> None:
+        self.config = config
 
     @staticmethod
     def _not_implemented(operation: str) -> NoReturn:
