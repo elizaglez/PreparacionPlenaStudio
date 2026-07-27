@@ -1,11 +1,13 @@
 import ast
 import inspect
+import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 from app.ai.config import AIProviderConfig
+from app.ai.errors import AIProviderConfigurationError
 from app.ai.fake_openai_client import FakeOpenAIClient
-from app.ai.openai_client_adapter import OpenAIClientAdapter
 from app.ai.openai_provider import OpenAIProvider
 from app.article_content_service import ArticleContentService
 from app.composition import create_article_content_service
@@ -69,8 +71,45 @@ class CompositionTests(unittest.TestCase):
         provider = service._generator._provider
         self.assertIsInstance(provider, OpenAIProvider)
         self.assertIs(provider.config, self.config)
-        self.assertIsInstance(provider.client, OpenAIClientAdapter)
-        self.assertIs(provider.client.client, fake_client)
+        self.assertIs(provider.client, fake_client)
+
+    def test_composes_real_client_port_from_explicit_api_key(self):
+        fake_client = FakeOpenAIClient()
+
+        with patch(
+            "app.composition.create_openai_client",
+            return_value=fake_client,
+        ) as client_factory:
+            service = create_article_content_service(
+                "openai",
+                self.config,
+                openai_api_key="clave-de-prueba",
+            )
+
+        client_factory.assert_called_once_with("clave-de-prueba")
+        self.assertIs(service._generator._provider.client, fake_client)
+
+    def test_fake_provider_never_creates_openai_client(self):
+        with patch(
+            "app.composition.create_openai_client"
+        ) as client_factory:
+            service = create_article_content_service(
+                "  FAKE  ",
+                self.config,
+                openai_api_key="clave-que-debe-ignorarse",
+            )
+
+        client_factory.assert_not_called()
+        self.assertIsInstance(service, ArticleContentService)
+
+    def test_rejects_client_and_api_key_together(self):
+        with self.assertRaises(AIProviderConfigurationError):
+            create_article_content_service(
+                "openai",
+                self.config,
+                openai_client=FakeOpenAIClient(),
+                openai_api_key="clave-de-prueba",
+            )
 
     def test_composed_openai_service_generates_through_fake_client(self):
         fake_client = FakeOpenAIClient()
@@ -139,9 +178,19 @@ class CompositionTests(unittest.TestCase):
             "app.ai.openai_provider",
         }
         self.assertTrue(forbidden_modules.isdisjoint(imported_modules))
-        self.assertNotIn("openai", sys.modules)
+        output = subprocess.check_output(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys; import app.composition; "
+                    "print('openai' in sys.modules)"
+                ),
+            ],
+            text=True,
+        )
+        self.assertEqual(output.strip(), "False")
         lowered_source = source.casefold()
-        self.assertNotIn("api_key", lowered_source)
         self.assertNotIn("environ", lowered_source)
         self.assertNotIn("getenv", lowered_source)
         self.assertNotIn("secret", lowered_source)

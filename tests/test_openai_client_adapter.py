@@ -1,47 +1,58 @@
-import ast
-import inspect
 import unittest
+from types import SimpleNamespace
 
+import httpx
+from openai import (
+    APIConnectionError,
+    APIResponseValidationError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    PermissionDeniedError,
+    RateLimitError,
+)
+
+from app.ai.errors import (
+    AIProviderConfigurationError,
+    AIProviderResponseError,
+    AIProviderTemporaryError,
+)
 from app.ai.openai_client_adapter import OpenAIClientAdapter
 from app.ai.openai_client_port import OpenAIClientPort
 
 
-class SimulatedInternalClient:
-    def __init__(self) -> None:
+class SimulatedResponses:
+    def __init__(self, *, output_text="Respuesta del SDK", error=None):
+        self.output_text = output_text
+        self.error = error
         self.calls = []
 
-    def generate_text(
-        self,
-        *,
-        model: str,
-        input_text: str,
-        temperature: float | None,
-        max_output_tokens: int | None,
-        timeout_seconds: float,
-    ) -> str:
-        self.calls.append(
-            {
-                "model": model,
-                "input_text": input_text,
-                "temperature": temperature,
-                "max_output_tokens": max_output_tokens,
-                "timeout_seconds": timeout_seconds,
-            }
-        )
-        return "Respuesta delegada"
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return SimpleNamespace(output_text=self.output_text)
+
+
+class SimulatedSDKClient:
+    def __init__(self, responses):
+        self.responses = responses
+
+
+def _request():
+    return httpx.Request("POST", "https://api.openai.com/v1/responses")
+
+
+def _response(status_code):
+    return httpx.Response(status_code, request=_request())
 
 
 class OpenAIClientAdapterTests(unittest.TestCase):
-    def test_implements_port_and_preserves_internal_client(self):
-        internal_client = SimulatedInternalClient()
-        adapter = OpenAIClientAdapter(internal_client)
-
-        self.assertIsInstance(adapter, OpenAIClientPort)
-        self.assertIs(adapter.client, internal_client)
-
-    def test_delegates_generate_text_with_complete_contract(self):
-        internal_client = SimulatedInternalClient()
-        adapter = OpenAIClientAdapter(internal_client)
+    def test_implements_port_and_calls_responses_api(self):
+        responses = SimulatedResponses(output_text="  Texto generado  ")
+        adapter = OpenAIClientAdapter(SimulatedSDKClient(responses))
 
         result = adapter.generate_text(
             model="modelo-prueba",
@@ -51,51 +62,177 @@ class OpenAIClientAdapterTests(unittest.TestCase):
             timeout_seconds=25.0,
         )
 
-        self.assertEqual(result, "Respuesta delegada")
+        self.assertIsInstance(adapter, OpenAIClientPort)
+        self.assertEqual(result, "Texto generado")
         self.assertEqual(
-            internal_client.calls,
+            responses.calls,
             [
                 {
                     "model": "modelo-prueba",
-                    "input_text": "Contenido para generar",
+                    "input": "Contenido para generar",
                     "temperature": 0.4,
                     "max_output_tokens": 800,
-                    "timeout_seconds": 25.0,
+                    "timeout": 25.0,
                 }
             ],
         )
 
-    def test_accepts_optional_generation_values(self):
-        internal_client = SimulatedInternalClient()
-        adapter = OpenAIClientAdapter(internal_client)
+    def test_rejects_empty_or_invalid_output(self):
+        for output_text in (None, "", "   ", 42):
+            with self.subTest(output_text=output_text):
+                adapter = OpenAIClientAdapter(
+                    SimulatedSDKClient(
+                        SimulatedResponses(output_text=output_text)
+                    )
+                )
 
-        adapter.generate_text(
-            model="modelo-prueba",
-            input_text="Contenido",
-            temperature=None,
-            max_output_tokens=None,
-            timeout_seconds=1.0,
+                with self.assertRaises(AIProviderResponseError):
+                    adapter.generate_text(
+                        model="modelo-prueba",
+                        input_text="Contenido",
+                        temperature=None,
+                        max_output_tokens=None,
+                        timeout_seconds=1.0,
+                    )
+
+    def test_translates_timeout_connection_and_rate_limit_errors(self):
+        errors = (
+            APITimeoutError(_request()),
+            APIConnectionError(request=_request()),
+            RateLimitError(
+                "Límite",
+                response=_response(429),
+                body=None,
+            ),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                adapter = OpenAIClientAdapter(
+                    SimulatedSDKClient(SimulatedResponses(error=error))
+                )
+
+                with self.assertRaises(AIProviderTemporaryError) as raised:
+                    adapter.generate_text(
+                        model="modelo-prueba",
+                        input_text="Contenido",
+                        temperature=None,
+                        max_output_tokens=None,
+                        timeout_seconds=1.0,
+                    )
+
+                self.assertIs(raised.exception.__cause__, error)
+
+    def test_translates_authentication_error(self):
+        error = AuthenticationError(
+            "Credencial inválida",
+            response=_response(401),
+            body=None,
+        )
+        adapter = OpenAIClientAdapter(
+            SimulatedSDKClient(SimulatedResponses(error=error))
         )
 
-        self.assertIsNone(internal_client.calls[0]["temperature"])
-        self.assertIsNone(internal_client.calls[0]["max_output_tokens"])
+        with self.assertRaises(AIProviderConfigurationError) as raised:
+            adapter.generate_text(
+                model="modelo-prueba",
+                input_text="Contenido",
+                temperature=None,
+                max_output_tokens=None,
+                timeout_seconds=1.0,
+            )
 
-    def test_has_no_external_dependencies(self):
-        source = inspect.getsource(inspect.getmodule(OpenAIClientAdapter))
-        tree = ast.parse(source)
-        imported_modules = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported_modules.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imported_modules.add(node.module)
+        self.assertIs(raised.exception.__cause__, error)
 
-        forbidden_modules = {"openai", "requests", "httpx", "app.prompts"}
-        self.assertTrue(forbidden_modules.isdisjoint(imported_modules))
-        lowered_source = source.casefold()
-        self.assertNotIn("api_key", lowered_source)
-        self.assertNotIn("os.environ", lowered_source)
-        self.assertNotIn("getenv", lowered_source)
+    def test_translates_permission_and_bad_request_errors(self):
+        errors = (
+            PermissionDeniedError(
+                "Permiso denegado",
+                response=_response(403),
+                body=None,
+            ),
+            BadRequestError(
+                "Solicitud inválida",
+                response=_response(400),
+                body=None,
+            ),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                adapter = OpenAIClientAdapter(
+                    SimulatedSDKClient(SimulatedResponses(error=error))
+                )
+
+                with self.assertRaises(
+                    AIProviderConfigurationError
+                ) as raised:
+                    adapter.generate_text(
+                        model="modelo-prueba",
+                        input_text="Contenido",
+                        temperature=None,
+                        max_output_tokens=None,
+                        timeout_seconds=1.0,
+                    )
+
+                self.assertIs(raised.exception.__cause__, error)
+
+    def test_translates_internal_and_generic_server_errors(self):
+        errors = (
+            InternalServerError(
+                "Error interno",
+                response=_response(500),
+                body=None,
+            ),
+            APIStatusError(
+                "Servicio no disponible",
+                response=_response(503),
+                body=None,
+            ),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                adapter = OpenAIClientAdapter(
+                    SimulatedSDKClient(SimulatedResponses(error=error))
+                )
+
+                with self.assertRaises(AIProviderTemporaryError) as raised:
+                    adapter.generate_text(
+                        model="modelo-prueba",
+                        input_text="Contenido",
+                        temperature=None,
+                        max_output_tokens=None,
+                        timeout_seconds=1.0,
+                    )
+
+                self.assertIs(raised.exception.__cause__, error)
+
+    def test_translates_invalid_and_nonrecoverable_responses(self):
+        errors = (
+            APIResponseValidationError(
+                response=_response(200),
+                body={"invalid": True},
+            ),
+            APIStatusError(
+                "No encontrado",
+                response=_response(404),
+                body=None,
+            ),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__):
+                adapter = OpenAIClientAdapter(
+                    SimulatedSDKClient(SimulatedResponses(error=error))
+                )
+
+                with self.assertRaises(AIProviderResponseError) as raised:
+                    adapter.generate_text(
+                        model="modelo-prueba",
+                        input_text="Contenido",
+                        temperature=None,
+                        max_output_tokens=None,
+                        timeout_seconds=1.0,
+                    )
+
+                self.assertIs(raised.exception.__cause__, error)
 
 
 if __name__ == "__main__":
