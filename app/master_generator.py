@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Callable
 
 from app.ai import OpenAIEditor
+from app.ai.config import AIProviderConfig
+from app.composition import create_article_content_service
 from app.config import ROOT_DIR
 from app.context import ContextBuilder
 from app.generation import (
@@ -14,6 +16,8 @@ from app.generation import (
     _answer_from_result,
     _generate_one,
 )
+from app.generation.article_generation_plan import ArticleGenerationPlan
+from app.generation.generated_article import GeneratedArticle
 from app.logging import GenerationLog
 from app.models import Project
 from app.pipeline import PipelineStateStore
@@ -25,6 +29,7 @@ from app.use_cases import (
     RegenerateAnswerUseCase,
     RegenerateStageUseCase,
 )
+from app.use_cases.generate_article_content import GenerateArticleContentUseCase
 from app.validation.master_validator import validate_master
 
 
@@ -83,6 +88,16 @@ def generate_master(
         now=datetime.now,
     )
     return use_case.execute(project, progress_callback)
+
+
+def generate_article_content(
+    plan: ArticleGenerationPlan,
+    provider_name: str,
+    config: AIProviderConfig,
+) -> GeneratedArticle:
+    """Generate article content through the new provider architecture."""
+    service = create_article_content_service(provider_name, config)
+    return GenerateArticleContentUseCase(service).execute(plan)
 
 
 def regenerate_answer(
