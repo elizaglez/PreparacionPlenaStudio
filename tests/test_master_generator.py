@@ -1,4 +1,6 @@
 import inspect
+import subprocess
+import sys
 import unittest
 from unittest.mock import Mock, patch
 
@@ -40,7 +42,9 @@ class MasterGeneratorTests(unittest.TestCase):
         self.assertIn("No se permite especulación", instructions)
 
 
-    @patch("app.master_generator.GenerateArticleContentUseCase")
+    @patch(
+        "app.use_cases.generate_article_content.GenerateArticleContentUseCase"
+    )
     @patch("app.master_generator.create_article_content_service")
     def test_generates_article_content_through_composition_and_use_case(
         self,
@@ -86,6 +90,24 @@ class MasterGeneratorTests(unittest.TestCase):
         self.assertNotIn("import openai", source)
         self.assertNotIn("openai_client", source)
         self.assertNotIn("openai_api_key", source)
+
+    def test_importing_new_entry_point_does_not_load_legacy_pipeline(self):
+        script = (
+            "import sys; "
+            "from app.master_generator import generate_article_content; "
+            "print('app.generation.master_answer_generator' in sys.modules); "
+            "print('app.ai.openai_client' in sys.modules); "
+            "print('openai' in sys.modules)"
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.stdout.splitlines(), ["False", "False", "False"])
 
     def test_legacy_generate_master_entry_point_remains_available(self):
         self.assertTrue(callable(generate_master))
