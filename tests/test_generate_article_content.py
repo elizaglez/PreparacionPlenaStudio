@@ -26,7 +26,36 @@ class FakeArticleContentService:
         return self.result
 
 
+class FakeGeneratedArticleRepository:
+    def __init__(self) -> None:
+        self.saved: list[GeneratedArticle] = []
+
+    def save(self, article: GeneratedArticle) -> None:
+        self.saved.append(article)
+
+    def load(self) -> GeneratedArticle:
+        return self.saved[-1]
+
+
 class GenerateArticleContentUseCaseTests(unittest.TestCase):
+    def test_persists_generated_article_when_repository_is_provided(self):
+        generated = GeneratedArticle(
+            title="Artículo generado",
+            introduction=GeneratedIntroduction(),
+        )
+        service = FakeArticleContentService(generated)
+        repository = FakeGeneratedArticleRepository()
+        use_case = GenerateArticleContentUseCase(service, repository)
+        plan = ArticleGenerationPlan(
+            title="Título fuente",
+            introduction="Introducción fuente",
+        )
+
+        result = use_case.execute(plan)
+
+        self.assertIs(result, generated)
+        self.assertEqual(repository.saved, [generated])
+
     def test_builds_request_calls_service_and_returns_generated_article(self):
         generated = GeneratedArticle(
             title="Artículo generado",

@@ -2,7 +2,9 @@ import ast
 import inspect
 import subprocess
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from app.ai.config import AIProviderConfig
@@ -10,7 +12,11 @@ from app.ai.errors import AIProviderConfigurationError
 from app.ai.fake_openai_client import FakeOpenAIClient
 from app.ai.openai_provider import OpenAIProvider
 from app.article_content_service import ArticleContentService
-from app.composition import create_article_content_service
+from app.composition import (
+    create_article_content_service,
+    create_generate_article_content_use_case,
+)
+from app.generation.article_generation_plan import ArticleGenerationPlan
 from app.generation.content_generation_request import (
     ContentGenerationRequest,
     QuestionGenerationRequest,
@@ -32,6 +38,29 @@ class CompositionTests(unittest.TestCase):
         service = create_article_content_service("fake", self.config)
 
         self.assertIsInstance(service, ArticleContentService)
+
+    def test_composes_generation_use_case_with_persistence(self):
+        plan = ArticleGenerationPlan(
+            title="Artículo persistido",
+            introduction="Introducción",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            use_case = create_generate_article_content_use_case(
+                "fake",
+                self.config,
+                temporary,
+            )
+
+            generated = use_case.execute(plan)
+
+            self.assertEqual(generated.title, "Artículo persistido")
+            self.assertTrue(
+                (
+                    Path(temporary)
+                    / "trabajo"
+                    / "articulo_generado.json"
+                ).is_file()
+            )
 
     def test_composed_fake_provider_generates_article(self):
         service = create_article_content_service("fake", self.config)

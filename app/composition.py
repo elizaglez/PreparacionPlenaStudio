@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.ai.config import AIProviderConfig
 from app.ai.errors import AIProviderConfigurationError
 from app.ai.openai_client_factory import create_openai_client
@@ -36,3 +38,27 @@ def create_article_content_service(
         openai_client=client,
     )
     return ArticleContentService(provider)
+
+
+def create_generate_article_content_use_case(
+    provider_name: str,
+    config: AIProviderConfig,
+    project_root: str | Path,
+    *,
+    openai_client: OpenAIClientPort | None = None,
+    openai_api_key: str | None = None,
+):
+    """Compose generation and project-local persistence."""
+    from app.persistence.generated_article_repository import (
+        JsonGeneratedArticleRepository,
+    )
+    from app.use_cases.generate_article_content import GenerateArticleContentUseCase
+
+    service = create_article_content_service(
+        provider_name,
+        config,
+        openai_client=openai_client,
+        openai_api_key=openai_api_key,
+    )
+    repository = JsonGeneratedArticleRepository(project_root)
+    return GenerateArticleContentUseCase(service, repository)
