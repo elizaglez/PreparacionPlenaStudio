@@ -2,10 +2,8 @@ import ast
 import inspect
 import unittest
 
-from app.ai.openai_provider import (
-    OpenAIProvider,
-    OpenAIProviderNotImplementedError,
-)
+from app.ai.errors import AIProviderConfigurationError, AIProviderError
+from app.ai.openai_provider import OpenAIProvider
 from app.ai.provider import AIProvider
 
 
@@ -24,8 +22,12 @@ class OpenAIProviderTests(unittest.TestCase):
         ]
         for operation in operations:
             with self.subTest(operation=operation):
-                with self.assertRaises(OpenAIProviderNotImplementedError):
+                with self.assertRaises(AIProviderError) as caught:
                     operation()
+                self.assertIsInstance(
+                    caught.exception,
+                    AIProviderConfigurationError,
+                )
 
     def test_has_no_external_ai_or_prompt_dependencies(self):
         source = inspect.getsource(inspect.getmodule(OpenAIProvider))

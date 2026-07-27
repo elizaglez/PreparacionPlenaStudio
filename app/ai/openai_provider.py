@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from typing import NoReturn
 
+from app.ai.errors import AIProviderConfigurationError
 from app.ai.provider import AIProvider
-
-
-class OpenAIProviderNotImplementedError(RuntimeError):
-    """Raised when the prepared provider is used before its implementation."""
 
 
 class OpenAIProvider(AIProvider):
@@ -14,7 +11,7 @@ class OpenAIProvider(AIProvider):
 
     @staticmethod
     def _not_implemented(operation: str) -> NoReturn:
-        raise OpenAIProviderNotImplementedError(
+        raise AIProviderConfigurationError(
             "El proveedor OpenAI todavía no implementa la operación "
             f"{operation!r}."
         )
