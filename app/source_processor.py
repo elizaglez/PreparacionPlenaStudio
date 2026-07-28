@@ -51,6 +51,17 @@ def process_project_sources(
     _emit(progress_callback, 73, "Validando el audio…")
     audio_result = inspect_audio(audio_path)
 
+    analysis_output_paths = (
+        work_dir / "pdf_extraido.txt",
+        work_dir / "citas_extraidas.txt",
+        work_dir / "articulo.json",
+        work_dir / "fuentes_resumen.json",
+    )
+    previous_analysis_outputs = {
+        path: path.read_bytes() if path.is_file() else None
+        for path in analysis_output_paths
+    }
+
     _emit(progress_callback, 84, "Guardando los textos y la estructura…")
     (work_dir / "pdf_extraido.txt").write_text(
         pdf_result["text"], encoding="utf-8"
@@ -138,6 +149,11 @@ def process_project_sources(
         project.updated_at = previous_updated_at
         project.outputs.clear()
         project.outputs.update(previous_outputs)
+        for path, previous_content in previous_analysis_outputs.items():
+            if previous_content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(previous_content)
         raise
 
     existing_legacy_outputs = [

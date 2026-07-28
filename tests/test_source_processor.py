@@ -249,8 +249,100 @@ class SourceProcessorTests(unittest.TestCase):
                     self.assertTrue(paths[key].is_file())
 
             self.assertEqual(project.outputs, previous_outputs)
+            for filename in (
+                "pdf_extraido.txt",
+                "citas_extraidas.txt",
+                "articulo.json",
+                "fuentes_resumen.json",
+            ):
+                with self.subTest(removed=filename):
+                    self.assertFalse(
+                        (root / "trabajo" / filename).exists()
+                    )
+
+            for key in (
+                "generated_word",
+                "master_word",
+                "generation_log",
+            ):
+                with self.subTest(preserved=key):
+                    self.assertTrue(paths[key].is_file())
+
             self.assertFalse(
                 (root / "trabajo" / "archivados").exists()
+            )
+
+    def test_restores_previous_analysis_when_project_save_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths = self.create_existing_outputs(root)
+            work = root / "trabajo"
+            previous_analysis = {
+                work / "pdf_extraido.txt": b"pdf-anterior",
+                work / "citas_extraidas.txt": b"citas-anteriores",
+                work / "articulo.json": b'{"title": "Articulo anterior"}',
+                work / "fuentes_resumen.json": (
+                    b'{"processed_at": "fecha-anterior"}'
+                ),
+            }
+            for path, content in previous_analysis.items():
+                path.write_bytes(content)
+
+            project = self.create_project(temporary)
+            project.status = "contenido_generado"
+            project.updated_at = "2026-01-01T10:00:00-06:00"
+            project.outputs.update(
+                {
+                    "pdf_text": "trabajo/pdf_extraido.txt",
+                    "bible_text": "trabajo/citas_extraidas.txt",
+                    "article": "trabajo/articulo.json",
+                    "sources_summary": "trabajo/fuentes_resumen.json",
+                }
+            )
+            previous_outputs = dict(project.outputs)
+            patches = self.processing_patches(
+                save_project=Mock(
+                    side_effect=RuntimeError(
+                        "fallo al guardar proyecto"
+                    )
+                ),
+            )
+
+            with (
+                patches[0],
+                patches[1],
+                patches[2],
+                patches[3],
+                patches[4],
+            ):
+                with self.assertRaises(RuntimeError):
+                    process_project_sources(project)
+
+            for path, content in previous_analysis.items():
+                with self.subTest(restored=path.name):
+                    self.assertEqual(path.read_bytes(), content)
+
+            self.assertEqual(project.status, "contenido_generado")
+            self.assertEqual(
+                project.updated_at,
+                "2026-01-01T10:00:00-06:00",
+            )
+            self.assertEqual(project.outputs, previous_outputs)
+
+            for key in (
+                "generated_article",
+                "master",
+                "master_validation",
+                "pipeline_state",
+                "generated_word",
+                "master_word",
+                "generation_log",
+            ):
+                with self.subTest(preserved=key):
+                    self.assertTrue(paths[key].is_file())
+
+            self.assertFalse(
+                (work / "archivados").exists()
             )
 
     def test_uses_unique_archive_for_each_successful_analysis(self):
