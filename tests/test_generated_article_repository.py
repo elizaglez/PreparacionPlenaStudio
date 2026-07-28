@@ -193,6 +193,74 @@ class GeneratedArticleRepositoryTests(unittest.TestCase):
                 "2026-01-01T10:00:00-06:00",
             )
             self.assertEqual(project.outputs, previous_outputs)
+            self.assertFalse(repository.path.exists())
+
+    def test_restores_previous_article_when_project_save_fails(self):
+        previous_content = (
+            b'{\n'
+            b'  "schema_version": 1,\n'
+            b'  "title": "Articulo anterior",\n'
+            b'  "introduction": {"paragraphs": [], "questions": []},\n'
+            b'  "sections": [],\n'
+            b'  "review_questions": []\n'
+            b'}'
+        )
+        replacement = GeneratedArticle(title="Artículo nuevo")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Project(
+                name="Proyecto con artículo anterior",
+                root=temporary,
+                status="contenido_generado",
+                updated_at="2026-01-01T10:00:00-06:00",
+                outputs={
+                    "article": "trabajo/articulo.json",
+                    "generated_article": (
+                        "trabajo/articulo_generado.json"
+                    ),
+                },
+            )
+            previous_outputs = dict(project.outputs)
+            repository = JsonGeneratedArticleRepository(
+                temporary,
+                project=project,
+            )
+            repository.path.parent.mkdir(parents=True)
+            repository.path.write_bytes(previous_content)
+
+            with (
+                patch(
+                    "app.persistence.generated_article_repository.save_project",
+                    side_effect=RuntimeError("fallo al guardar"),
+                ),
+                self.assertRaises(RuntimeError),
+            ):
+                repository.save(replacement)
+
+            self.assertEqual(
+                repository.path.read_bytes(),
+                previous_content,
+            )
+            self.assertEqual(project.status, "contenido_generado")
+            self.assertEqual(
+                project.updated_at,
+                "2026-01-01T10:00:00-06:00",
+            )
+            self.assertEqual(project.outputs, previous_outputs)
+
+    def test_successful_save_replaces_previous_article(self):
+        replacement = GeneratedArticle(title="Artículo nuevo")
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = JsonGeneratedArticleRepository(temporary)
+            repository.path.parent.mkdir(parents=True)
+            repository.path.write_text(
+                '{"title": "Artículo anterior"}',
+                encoding="utf-8",
+            )
+
+            repository.save(replacement)
+
+            self.assertEqual(repository.load(), replacement)
 
     def test_path_only_repository_updates_existing_project_metadata(self):
         article = GeneratedArticle(title="Artículo por ruta")

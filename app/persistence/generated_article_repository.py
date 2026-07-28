@@ -51,6 +51,10 @@ class JsonGeneratedArticleRepository(GeneratedArticleRepository):
         self.project = project
 
     def save(self, article: GeneratedArticle) -> None:
+        previous_article_content = (
+            self.path.read_bytes() if self.path.is_file() else None
+        )
+
         data = {"schema_version": GENERATED_ARTICLE_SCHEMA_VERSION}
         data.update(article.to_dict())
         save_json(self.path, data)
@@ -81,6 +85,10 @@ class JsonGeneratedArticleRepository(GeneratedArticleRepository):
             project.updated_at = previous_updated_at
             project.outputs.clear()
             project.outputs.update(previous_outputs)
+            if previous_article_content is None:
+                self.path.unlink(missing_ok=True)
+            else:
+                self.path.write_bytes(previous_article_content)
             raise
 
     def load(self) -> GeneratedArticle:
