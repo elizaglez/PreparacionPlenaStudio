@@ -213,11 +213,30 @@ class ProjectWorkspace(QWidget):
 
     def generate_article_content(self) -> None:
         if self.project:
+            resolved_output = self._resolve_valid_output()
+            has_generated_article = (
+                resolved_output is not None
+                and resolved_output[0] == "generated_article"
+            )
+            if has_generated_article:
+                dialog_title = "Regenerar contenido"
+                dialog_message = (
+                    "Ya existe contenido generado. Si continúas, se reemplazará "
+                    "el contenido anterior. Se enviará una solicitud a OpenAI "
+                    "por cada pregunta detectada y esto puede generar costos "
+                    "de API. ¿Continuar?"
+                )
+            else:
+                dialog_title = "Generar contenido"
+                dialog_message = (
+                    "Se enviará una solicitud a OpenAI por cada pregunta detectada. "
+                    "Esto puede generar costos de API. ¿Continuar?"
+                )
+
             answer = QMessageBox.question(
                 self,
-                "Generar contenido",
-                "Se enviará una solicitud a OpenAI por cada pregunta detectada. "
-                "Esto puede generar costos de API. ¿Continuar?",
+                dialog_title,
+                dialog_message,
             )
             if answer == QMessageBox.StandardButton.Yes:
                 try:

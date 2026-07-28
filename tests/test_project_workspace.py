@@ -132,6 +132,135 @@ class ProjectWorkspaceTests(unittest.TestCase):
         worker_factory.assert_not_called()
         start_worker.assert_not_called()
 
+    def test_confirmed_regeneration_starts_article_content_worker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Project(
+                name="Proyecto con contenido",
+                root=temporary,
+            )
+            JsonGeneratedArticleRepository(temporary).save(
+                self.generated_article()
+            )
+            self.workspace.project = project
+            worker = Mock(name="article_content_worker")
+
+            with (
+                patch(
+                    "app.pages.project_workspace.QMessageBox.question",
+                    return_value=QMessageBox.StandardButton.Yes,
+                ) as question,
+                patch(
+                    "app.pages.project_workspace."
+                    "create_article_content_worker",
+                    return_value=worker,
+                ) as worker_factory,
+                patch.object(
+                    self.workspace,
+                    "_start_worker",
+                ) as start_worker,
+            ):
+                self.workspace.generate_article_content()
+
+            question.assert_called_once_with(
+                self.workspace,
+                "Regenerar contenido",
+                "Ya existe contenido generado. Si continúas, se reemplazará "
+                "el contenido anterior. Se enviará una solicitud a OpenAI "
+                "por cada pregunta detectada y esto puede generar costos "
+                "de API. ¿Continuar?",
+            )
+            worker_factory.assert_called_once_with(project)
+            start_worker.assert_called_once_with(
+                worker,
+                "article_content",
+            )
+
+    def test_cancelled_regeneration_preserves_generated_article(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Project(
+                name="Proyecto con contenido",
+                root=temporary,
+            )
+            repository = JsonGeneratedArticleRepository(temporary)
+            repository.save(self.generated_article())
+            previous_content = repository.path.read_bytes()
+            self.workspace.project = project
+
+            with (
+                patch(
+                    "app.pages.project_workspace.QMessageBox.question",
+                    return_value=QMessageBox.StandardButton.No,
+                ) as question,
+                patch(
+                    "app.pages.project_workspace."
+                    "create_article_content_worker",
+                ) as worker_factory,
+                patch.object(
+                    self.workspace,
+                    "_start_worker",
+                ) as start_worker,
+            ):
+                self.workspace.generate_article_content()
+
+            question.assert_called_once_with(
+                self.workspace,
+                "Regenerar contenido",
+                "Ya existe contenido generado. Si continúas, se reemplazará "
+                "el contenido anterior. Se enviará una solicitud a OpenAI "
+                "por cada pregunta detectada y esto puede generar costos "
+                "de API. ¿Continuar?",
+            )
+            worker_factory.assert_not_called()
+            start_worker.assert_not_called()
+            self.assertEqual(
+                repository.path.read_bytes(),
+                previous_content,
+            )
+
+    def test_valid_master_does_not_activate_regeneration_warning(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            (work / "master.json").write_text(
+                json.dumps(
+                    {
+                        "title": "MASTER legacy",
+                        "answers": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            project = Project(
+                name="Proyecto con MASTER",
+                root=temporary,
+            )
+            self.workspace.project = project
+
+            with (
+                patch(
+                    "app.pages.project_workspace.QMessageBox.question",
+                    return_value=QMessageBox.StandardButton.No,
+                ) as question,
+                patch(
+                    "app.pages.project_workspace."
+                    "create_article_content_worker",
+                ) as worker_factory,
+                patch.object(
+                    self.workspace,
+                    "_start_worker",
+                ) as start_worker,
+            ):
+                self.workspace.generate_article_content()
+
+            question.assert_called_once_with(
+                self.workspace,
+                "Generar contenido",
+                "Se enviará una solicitud a OpenAI por cada pregunta detectada. "
+                "Esto puede generar costos de API. ¿Continuar?",
+            )
+            worker_factory.assert_not_called()
+            start_worker.assert_not_called()
+
     def test_reports_worker_composition_failure_without_starting_thread(self):
         with (
             patch(
