@@ -17,7 +17,10 @@ from PySide6.QtWidgets import (
 
 from app.composition import create_article_content_worker
 from app.dialogs import ProcessingDialog
-from app.exporters import export_master_to_docx
+from app.exporters import (
+    export_generated_article_to_docx,
+    export_master_to_docx,
+)
 from app.generation.generated_article import GeneratedArticle
 from app.persistence.generated_article_repository import (
     JsonGeneratedArticleRepository,
@@ -109,7 +112,10 @@ class ProjectWorkspace(QWidget):
         master_exists = (work / "master.json").is_file()
         generated_article_exists = (work / "articulo_generado.json").is_file()
         self.generate.setEnabled(article_exists and self.thread is None)
-        self.export.setEnabled(master_exists and self.thread is None)
+        self.export.setEnabled(
+            (generated_article_exists or master_exists)
+            and self.thread is None
+        )
 
         if generated_article_exists:
             try:
@@ -326,13 +332,21 @@ class ProjectWorkspace(QWidget):
         if not self.project:
             return
         try:
-            path = export_master_to_docx(self.project)
+            generated_article_path = (
+                Path(self.project.root)
+                / "trabajo"
+                / "articulo_generado.json"
+            )
+            if generated_article_path.is_file():
+                path = export_generated_article_to_docx(self.project)
+            else:
+                path = export_master_to_docx(self.project)
         except Exception as exc:
             QMessageBox.critical(self, "Error al exportar", str(exc))
             return
         self._refresh_outputs()
         QMessageBox.information(
             self,
-            "MASTER exportado",
+            "Contenido exportado",
             f"Se creó:\n{path}",
         )

@@ -169,7 +169,7 @@ class ProjectWorkspaceTests(unittest.TestCase):
             self.workspace._refresh_outputs()
 
         self.assertTrue(self.workspace.generate.isEnabled())
-        self.assertFalse(self.workspace.export.isEnabled())
+        self.assertTrue(self.workspace.export.isEnabled())
         self.assertEqual(
             self.workspace.status.text(),
             "Contenido del artículo generado.",
@@ -216,6 +216,69 @@ class ProjectWorkspaceTests(unittest.TestCase):
         diagnostics = self.workspace.diagnostics.toPlainText()
         self.assertIn("Artículo generado", diagnostics)
         self.assertNotIn("MASTER anterior", diagnostics)
+
+    def test_exports_generated_article_with_priority_over_legacy_master(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            (work / "articulo_generado.json").write_text("{}", encoding="utf-8")
+            (work / "master.json").write_text("{}", encoding="utf-8")
+            self.workspace.project = Project(
+                name="Proyecto con ambas salidas",
+                root=temporary,
+            )
+            generated_output = (
+                Path(temporary) / "salidas" / "CONTENIDO_GENERADO.docx"
+            )
+
+            with (
+                patch(
+                    "app.pages.project_workspace."
+                    "export_generated_article_to_docx",
+                    return_value=generated_output,
+                ) as generated_exporter,
+                patch(
+                    "app.pages.project_workspace.export_master_to_docx",
+                ) as legacy_exporter,
+                patch.object(self.workspace, "_refresh_outputs"),
+                patch(
+                    "app.pages.project_workspace.QMessageBox.information",
+                ),
+            ):
+                self.workspace.export_word()
+
+        generated_exporter.assert_called_once_with(self.workspace.project)
+        legacy_exporter.assert_not_called()
+
+    def test_exports_legacy_master_when_generated_article_is_absent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            (work / "master.json").write_text("{}", encoding="utf-8")
+            self.workspace.project = Project(
+                name="Proyecto legacy",
+                root=temporary,
+            )
+            legacy_output = Path(temporary) / "salidas" / "MASTER.docx"
+
+            with (
+                patch(
+                    "app.pages.project_workspace."
+                    "export_generated_article_to_docx",
+                ) as generated_exporter,
+                patch(
+                    "app.pages.project_workspace.export_master_to_docx",
+                    return_value=legacy_output,
+                ) as legacy_exporter,
+                patch.object(self.workspace, "_refresh_outputs"),
+                patch(
+                    "app.pages.project_workspace.QMessageBox.information",
+                ),
+            ):
+                self.workspace.export_word()
+
+        generated_exporter.assert_not_called()
+        legacy_exporter.assert_called_once_with(self.workspace.project)
 
     def test_legacy_generate_master_route_remains_available(self):
         self.assertTrue(callable(self.workspace.generate_master))
