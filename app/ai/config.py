@@ -12,7 +12,7 @@ class AIProviderConfig:
     model: str
     timeout_seconds: float
     temperature: float | None = None
-    max_output_tokens: int | None = None
+    max_output_tokens: int | None = 1024
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, str) or not self.model.strip():
