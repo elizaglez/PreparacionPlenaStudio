@@ -177,11 +177,16 @@ class GeneratedArticleRepositoryTests(unittest.TestCase):
                 temporary,
                 project=project,
             )
+            project_path = Path(temporary) / "proyecto.json"
+
+            def fail_after_partial_project_save(_project):
+                project_path.write_bytes(b'{"status": "contenido_')
+                raise RuntimeError("fallo al guardar")
 
             with (
                 patch(
                     "app.persistence.generated_article_repository.save_project",
-                    side_effect=RuntimeError("fallo al guardar"),
+                    side_effect=fail_after_partial_project_save,
                 ),
                 self.assertRaises(RuntimeError),
             ):
@@ -194,8 +199,9 @@ class GeneratedArticleRepositoryTests(unittest.TestCase):
             )
             self.assertEqual(project.outputs, previous_outputs)
             self.assertFalse(repository.path.exists())
+            self.assertFalse(project_path.exists())
 
-    def test_restores_previous_article_when_project_save_fails(self):
+    def test_restores_previous_article_and_project_when_save_fails(self):
         previous_content = (
             b'{\n'
             b'  "schema_version": 1,\n'
@@ -203,6 +209,18 @@ class GeneratedArticleRepositoryTests(unittest.TestCase):
             b'  "introduction": {"paragraphs": [], "questions": []},\n'
             b'  "sections": [],\n'
             b'  "review_questions": []\n'
+            b'}'
+        )
+        previous_project_content = (
+            b'{\n'
+            b'  "name": "Proyecto con articulo anterior",\n'
+            b'  "status": "contenido_generado",\n'
+            b'  "updated_at": "2026-01-01T10:00:00-06:00",\n'
+            b'  "outputs": {\n'
+            b'    "article": "trabajo/articulo.json",\n'
+            b'    "generated_article": '
+            b'"trabajo/articulo_generado.json"\n'
+            b'  }\n'
             b'}'
         )
         replacement = GeneratedArticle(title="Artículo nuevo")
@@ -227,11 +245,17 @@ class GeneratedArticleRepositoryTests(unittest.TestCase):
             )
             repository.path.parent.mkdir(parents=True)
             repository.path.write_bytes(previous_content)
+            project_path = Path(temporary) / "proyecto.json"
+            project_path.write_bytes(previous_project_content)
+
+            def fail_after_partial_project_save(_project):
+                project_path.write_bytes(b'{"status": "contenido_')
+                raise RuntimeError("fallo al guardar")
 
             with (
                 patch(
                     "app.persistence.generated_article_repository.save_project",
-                    side_effect=RuntimeError("fallo al guardar"),
+                    side_effect=fail_after_partial_project_save,
                 ),
                 self.assertRaises(RuntimeError),
             ):
@@ -240,6 +264,10 @@ class GeneratedArticleRepositoryTests(unittest.TestCase):
             self.assertEqual(
                 repository.path.read_bytes(),
                 previous_content,
+            )
+            self.assertEqual(
+                project_path.read_bytes(),
+                previous_project_content,
             )
             self.assertEqual(project.status, "contenido_generado")
             self.assertEqual(
