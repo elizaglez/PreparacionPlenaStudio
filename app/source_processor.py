@@ -101,6 +101,7 @@ def process_project_sources(
         encoding="utf-8",
     )
 
+    generated_article_path = work_dir / "articulo_generado.json"
     project.status = "articulo_estructurado"
     project.updated_at = summary["processed_at"]
     project.outputs.update(
@@ -111,7 +112,19 @@ def process_project_sources(
             "sources_summary": "trabajo/fuentes_resumen.json",
         }
     )
-    save_project(project)
+    missing_output = object()
+    previous_generated_output = project.outputs.pop(
+        "generated_article",
+        missing_output,
+    )
+    try:
+        save_project(project)
+    except Exception:
+        if previous_generated_output is not missing_output:
+            project.outputs["generated_article"] = previous_generated_output
+        raise
+
+    generated_article_path.unlink(missing_ok=True)
 
     _emit(progress_callback, 100, "Artículo estructurado correctamente.")
     return summary
