@@ -77,6 +77,31 @@ class OpenAIClientAdapterTests(unittest.TestCase):
             ],
         )
 
+    def test_omits_temperature_for_gpt5_models(self):
+        responses = SimulatedResponses(output_text="Respuesta GPT-5")
+        adapter = OpenAIClientAdapter(SimulatedSDKClient(responses))
+
+        result = adapter.generate_text(
+            model="gpt-5-mini",
+            input_text="Prueba mínima",
+            temperature=0.4,
+            max_output_tokens=32,
+            timeout_seconds=25.0,
+        )
+
+        self.assertEqual(result, "Respuesta GPT-5")
+        self.assertEqual(
+            responses.calls,
+            [
+                {
+                    "model": "gpt-5-mini",
+                    "input": "Prueba mínima",
+                    "max_output_tokens": 32,
+                    "timeout": 25.0,
+                }
+            ],
+        )
+
     def test_rejects_empty_or_invalid_output(self):
         for output_text in (None, "", "   ", 42):
             with self.subTest(output_text=output_text):

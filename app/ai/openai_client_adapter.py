@@ -43,13 +43,21 @@ class OpenAIClientAdapter(OpenAIClientPort):
         max_output_tokens: int | None,
         timeout_seconds: float,
     ) -> str:
+        request_parameters = {
+            "model": model,
+            "input": input_text,
+            "max_output_tokens": max_output_tokens,
+            "timeout": timeout_seconds,
+        }
+        # GPT-5 models reject the legacy temperature parameter.  Keep it for
+        # model families that still support it while omitting it entirely for
+        # GPT-5 requests (including aliases such as gpt-5-mini).
+        if not model.strip().casefold().startswith("gpt-5"):
+            request_parameters["temperature"] = temperature
+
         try:
             response = self._client.responses.create(
-                model=model,
-                input=input_text,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-                timeout=timeout_seconds,
+                **request_parameters,
             )
         except (APITimeoutError, APIConnectionError, RateLimitError) as exc:
             raise AIProviderTemporaryError(
