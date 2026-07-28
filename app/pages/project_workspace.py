@@ -297,9 +297,86 @@ class ProjectWorkspace(QWidget):
             article.title or "Sin título",
             f"Preguntas: {question_count}",
             f"Respuestas generadas: {answered_count}",
-            "",
-            "Archivo: trabajo/articulo_generado.json",
         ]
+
+        def append_question(question) -> None:
+            question_text = question.question.strip()
+            if question_text:
+                lines.extend(
+                    [
+                        "",
+                        f"{question.number}. {question_text}",
+                    ]
+                )
+            if question.answer.strip():
+                lines.append(f"Respuesta: {question.answer.strip()}")
+            if question.application.strip():
+                lines.append(
+                    f"Aplicación: {question.application.strip()}"
+                )
+
+        introduction_paragraphs = [
+            str(paragraph.get("text", "")).strip()
+            for paragraph in article.introduction.paragraphs
+            if str(paragraph.get("text", "")).strip()
+        ]
+        if introduction_paragraphs or article.introduction.questions:
+            lines.extend(["", "INTRODUCCIÓN"])
+            lines.extend(introduction_paragraphs)
+            for question in article.introduction.questions:
+                append_question(question)
+
+        for section in article.sections:
+            subtitle = section.subtitle.strip()
+            if subtitle:
+                lines.extend(["", subtitle])
+
+            if section.heygen_transition and section.heygen_transition.strip():
+                lines.append(
+                    f"Transición: {section.heygen_transition.strip()}"
+                )
+
+            for question in section.questions:
+                append_question(question)
+
+            if section.section_summary and section.section_summary.strip():
+                lines.extend(
+                    [
+                        "",
+                        f"Resumen: {section.section_summary.strip()}",
+                    ]
+                )
+
+            for box in section.boxes:
+                title = box.title.strip()
+                explanation = box.explanation.strip()
+                if not title and not explanation:
+                    continue
+                lines.append("")
+                lines.append(
+                    f"RECUADRO: {title}" if title else "RECUADRO"
+                )
+                if explanation:
+                    lines.append(explanation)
+
+        review_questions = [
+            question.strip()
+            for question in article.review_questions
+            if question.strip()
+        ]
+        if review_questions:
+            lines.extend(["", "PREGUNTAS DE REPASO"])
+            lines.extend(
+                f"• {question}"
+                for question in review_questions
+            )
+
+        lines.extend(
+            [
+                "",
+                "Archivo: trabajo/articulo_generado.json",
+            ]
+        )
         self.diagnostics.setPlainText("\n".join(lines))
 
     def _load_and_show_master(self) -> None:

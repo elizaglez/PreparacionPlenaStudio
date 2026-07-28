@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.generation.generated_article import (
     GeneratedArticle,
+    GeneratedBox,
     GeneratedIntroduction,
     GeneratedQuestion,
     GeneratedSection,
@@ -42,25 +43,45 @@ class ProjectWorkspaceTests(unittest.TestCase):
         return GeneratedArticle(
             title="Artículo generado",
             introduction=GeneratedIntroduction(
+                paragraphs=[
+                    {
+                        "number": 1,
+                        "text": "Introducción fuente",
+                    }
+                ],
                 questions=[
                     GeneratedQuestion(
                         number=1,
                         question="¿Pregunta inicial?",
                         answer="Respuesta inicial",
+                        application="Aplicación inicial",
                     )
                 ]
             ),
             sections=[
                 GeneratedSection(
                     subtitle="Subtítulo",
+                    heygen_transition="Transición de prueba",
                     questions=[
                         GeneratedQuestion(
                             number=2,
                             question="¿Pregunta de sección?",
                             answer="Respuesta de sección",
+                            application="Aplicación de sección",
+                        )
+                    ],
+                    section_summary="Resumen de la sección",
+                    boxes=[
+                        GeneratedBox(
+                            title="Recuadro de prueba",
+                            explanation="Explicación del recuadro",
+                            linked_paragraph=2,
                         )
                     ],
                 )
+            ],
+            review_questions=[
+                "¿Qué aprendimos?",
             ],
         )
 
@@ -145,9 +166,64 @@ class ProjectWorkspaceTests(unittest.TestCase):
         self.assertIn("Preguntas: 2", diagnostics)
         self.assertIn("Respuestas generadas: 2", diagnostics)
         self.assertIn("trabajo/articulo_generado.json", diagnostics)
+        self.assertIn("Introducción fuente", diagnostics)
+        self.assertIn("¿Pregunta inicial?", diagnostics)
+        self.assertIn("Respuesta: Respuesta inicial", diagnostics)
+        self.assertIn("Aplicación: Aplicación inicial", diagnostics)
+        self.assertIn("Subtítulo", diagnostics)
+        self.assertIn("Transición: Transición de prueba", diagnostics)
+        self.assertIn("¿Pregunta de sección?", diagnostics)
+        self.assertIn("Respuesta: Respuesta de sección", diagnostics)
+        self.assertIn("Aplicación: Aplicación de sección", diagnostics)
+        self.assertIn("Resumen: Resumen de la sección", diagnostics)
+        self.assertIn("RECUADRO: Recuadro de prueba", diagnostics)
+        self.assertIn("Explicación del recuadro", diagnostics)
+        self.assertIn("PREGUNTAS DE REPASO", diagnostics)
+        self.assertIn("• ¿Qué aprendimos?", diagnostics)
         dialog.mark_finished.assert_called_once_with(
             "Listo. Se creó trabajo/articulo_generado.json."
         )
+
+    def test_generated_article_view_omits_empty_optional_fields(self):
+        article = GeneratedArticle(
+            title="Artículo mínimo",
+            introduction=GeneratedIntroduction(
+                questions=[
+                    GeneratedQuestion(
+                        number=1,
+                        question="¿Pregunta sin respuesta?",
+                    )
+                ]
+            ),
+            sections=[
+                GeneratedSection(
+                    subtitle="Sección mínima",
+                    heygen_transition="",
+                    questions=[],
+                    section_summary="",
+                    boxes=[
+                        GeneratedBox(
+                            title="",
+                            explanation="",
+                            linked_paragraph=1,
+                        )
+                    ],
+                )
+            ],
+            review_questions=["", "   "],
+        )
+
+        self.workspace._show_generated_article(article)
+
+        diagnostics = self.workspace.diagnostics.toPlainText()
+        self.assertIn("¿Pregunta sin respuesta?", diagnostics)
+        self.assertIn("Sección mínima", diagnostics)
+        self.assertNotIn("Respuesta:", diagnostics)
+        self.assertNotIn("Aplicación:", diagnostics)
+        self.assertNotIn("Transición:", diagnostics)
+        self.assertNotIn("Resumen:", diagnostics)
+        self.assertNotIn("RECUADRO", diagnostics)
+        self.assertNotIn("PREGUNTAS DE REPASO", diagnostics)
 
     def test_refreshes_persisted_generated_article(self):
         with tempfile.TemporaryDirectory() as temporary:
