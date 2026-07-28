@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
+from uuid import uuid4
 
 from app.models import Project
 from app.parsers import parse_article
@@ -102,6 +103,21 @@ def process_project_sources(
     )
 
     generated_article_path = work_dir / "articulo_generado.json"
+    legacy_output_paths = (
+        work_dir / "master.json",
+        work_dir / "master_validacion.json",
+        work_dir / "pipeline_estado.json",
+    )
+    stale_output_keys = (
+        "generated_article",
+        "master",
+        "master_validation",
+        "pipeline_state",
+    )
+
+    previous_status = project.status
+    previous_updated_at = project.updated_at
+    previous_outputs = dict(project.outputs)
     project.status = "articulo_estructurado"
     project.updated_at = summary["processed_at"]
     project.outputs.update(
@@ -112,17 +128,32 @@ def process_project_sources(
             "sources_summary": "trabajo/fuentes_resumen.json",
         }
     )
-    missing_output = object()
-    previous_generated_output = project.outputs.pop(
-        "generated_article",
-        missing_output,
-    )
+    for key in stale_output_keys:
+        project.outputs.pop(key, None)
+
     try:
         save_project(project)
     except Exception:
-        if previous_generated_output is not missing_output:
-            project.outputs["generated_article"] = previous_generated_output
+        project.status = previous_status
+        project.updated_at = previous_updated_at
+        project.outputs.clear()
+        project.outputs.update(previous_outputs)
         raise
+
+    existing_legacy_outputs = [
+        path
+        for path in legacy_output_paths
+        if path.is_file()
+    ]
+    if existing_legacy_outputs:
+        archive_dir = (
+            work_dir
+            / "archivados"
+            / f"master_{uuid4().hex}"
+        )
+        archive_dir.mkdir(parents=True)
+        for path in existing_legacy_outputs:
+            path.replace(archive_dir / path.name)
 
     generated_article_path.unlink(missing_ok=True)
 
