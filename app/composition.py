@@ -8,6 +8,7 @@ from app.ai.openai_client_factory import create_openai_client
 from app.ai.openai_client_port import OpenAIClientPort
 from app.ai.provider_factory import create_provider
 from app.article_content_service import ArticleContentService
+from app.security.secret_loader import SecretLoader
 
 
 def create_article_content_service(
@@ -29,8 +30,9 @@ def create_article_content_service(
     if (
         normalized_name == "openai"
         and client is None
-        and openai_api_key is not None
     ):
+        if openai_api_key is None:
+            openai_api_key = SecretLoader().get_secret("OPENAI_API_KEY")
         client = create_openai_client(openai_api_key)
     provider = create_provider(
         provider_name,

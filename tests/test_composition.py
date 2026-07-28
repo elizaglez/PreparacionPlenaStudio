@@ -118,6 +118,35 @@ class CompositionTests(unittest.TestCase):
         client_factory.assert_called_once_with("clave-de-prueba")
         self.assertIs(service._generator._provider.client, fake_client)
 
+    def test_composes_openai_client_from_secret_loader(self):
+        fake_client = FakeOpenAIClient()
+
+        with (
+            patch("app.composition.SecretLoader") as loader_type,
+            patch(
+                "app.composition.create_openai_client",
+                return_value=fake_client,
+            ) as client_factory,
+        ):
+            loader_type.return_value.get_secret.return_value = (
+                "clave-cargada"
+            )
+            service = create_article_content_service("openai", self.config)
+
+        loader_type.assert_called_once_with()
+        loader_type.return_value.get_secret.assert_called_once_with(
+            "OPENAI_API_KEY"
+        )
+        client_factory.assert_called_once_with("clave-cargada")
+        self.assertIs(service._generator._provider.client, fake_client)
+
+    def test_fake_provider_does_not_load_secret(self):
+        with patch("app.composition.SecretLoader") as loader_type:
+            service = create_article_content_service("fake", self.config)
+
+        loader_type.assert_not_called()
+        self.assertIsInstance(service, ArticleContentService)
+
     def test_fake_provider_never_creates_openai_client(self):
         with patch(
             "app.composition.create_openai_client"
@@ -222,7 +251,7 @@ class CompositionTests(unittest.TestCase):
         lowered_source = source.casefold()
         self.assertNotIn("environ", lowered_source)
         self.assertNotIn("getenv", lowered_source)
-        self.assertNotIn("secret", lowered_source)
+        self.assertIn("secretloader", lowered_source)
 
 
 if __name__ == "__main__":
