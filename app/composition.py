@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from app.ai.config import AIProviderConfig
@@ -8,7 +10,13 @@ from app.ai.openai_client_factory import create_openai_client
 from app.ai.openai_client_port import OpenAIClientPort
 from app.ai.provider_factory import create_provider
 from app.article_content_service import ArticleContentService
+from app.generation.article_generation_plan import build_article_generation_plan
+from app.models import Project
 from app.security.secret_loader import SecretLoader
+from app.storage import load_settings
+
+
+OPENAI_DEFAULT_TIMEOUT_SECONDS = 600.0
 
 
 def create_article_content_service(
@@ -64,3 +72,36 @@ def create_generate_article_content_use_case(
     )
     repository = JsonGeneratedArticleRepository(project_root)
     return GenerateArticleContentUseCase(service, repository)
+
+
+def create_article_content_worker(
+    project: Project,
+    *,
+    settings_loader: Callable[[], Mapping[str, object]] = load_settings,
+):
+    """Compose the article-content worker from an existing project."""
+    from app.article_content_generator_worker import (
+        ArticleContentGeneratorWorker,
+    )
+
+    article_path = Path(project.root) / "trabajo" / "articulo.json"
+    article_data = json.loads(article_path.read_text(encoding="utf-8"))
+    plan = build_article_generation_plan(article_data)
+
+    settings = settings_loader()
+    config = AIProviderConfig(
+        model=str(settings.get("openai_model", "gpt-5-mini")),
+        timeout_seconds=float(
+            settings.get(
+                "openai_timeout_seconds",
+                OPENAI_DEFAULT_TIMEOUT_SECONDS,
+            )
+        ),
+    )
+
+    return ArticleContentGeneratorWorker(
+        plan,
+        "openai",
+        config,
+        project.root,
+    )

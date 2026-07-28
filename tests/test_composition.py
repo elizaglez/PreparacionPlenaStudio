@@ -1,5 +1,6 @@
 import ast
 import inspect
+import json
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,7 @@ from app.ai.fake_openai_client import FakeOpenAIClient
 from app.ai.openai_provider import OpenAIProvider
 from app.article_content_service import ArticleContentService
 from app.composition import (
+    create_article_content_worker,
     create_article_content_service,
     create_generate_article_content_use_case,
 )
@@ -23,6 +25,7 @@ from app.generation.content_generation_request import (
     SectionGenerationRequest,
 )
 from app.generation.generated_article import GeneratedArticle
+from app.models import Project
 
 
 class CompositionTests(unittest.TestCase):
@@ -61,6 +64,110 @@ class CompositionTests(unittest.TestCase):
                     / "articulo_generado.json"
                 ).is_file()
             )
+
+    def test_creates_article_content_worker_from_project(self):
+        article = {
+            "title": "Artículo del proyecto",
+            "introduction": "Introducción",
+            "sections": [
+                {
+                    "number": 1,
+                    "question": "¿Pregunta del proyecto?",
+                    "paragraph_numbers": [1],
+                    "paragraphs": [
+                        {
+                            "number": 1,
+                            "text": "Párrafo fuente",
+                            "scripture_references": [],
+                        }
+                    ],
+                    "subtitle": "",
+                }
+            ],
+            "boxes": [],
+            "review_questions": [],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            (work / "articulo.json").write_text(
+                json.dumps(article, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            project = Project(
+                name="Proyecto de prueba",
+                root=temporary,
+            )
+
+            worker = create_article_content_worker(
+                project,
+                settings_loader=lambda: {
+                    "openai_model": "modelo-configurado",
+                    "openai_timeout_seconds": 75.0,
+                },
+            )
+
+        from app.article_content_generator_worker import (
+            ArticleContentGeneratorWorker,
+        )
+
+        self.assertIsInstance(worker, ArticleContentGeneratorWorker)
+        self.assertEqual(worker.provider_name, "openai")
+        self.assertEqual(worker.project_root, temporary)
+        self.assertEqual(worker.config.model, "modelo-configurado")
+        self.assertEqual(worker.config.timeout_seconds, 75.0)
+        self.assertEqual(worker.plan.title, "Artículo del proyecto")
+        self.assertEqual(
+            worker.plan.sections[0].questions[0].text,
+            "¿Pregunta del proyecto?",
+        )
+
+    def test_worker_factory_uses_current_openai_default_timeout(self):
+        article = {
+            "title": "Artículo",
+            "introduction": "",
+            "sections": [],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            (work / "articulo.json").write_text(
+                json.dumps(article),
+                encoding="utf-8",
+            )
+            project = Project(name="Proyecto", root=temporary)
+
+            worker = create_article_content_worker(
+                project,
+                settings_loader=lambda: {
+                    "openai_model": "modelo-configurado",
+                },
+            )
+
+        self.assertEqual(worker.config.timeout_seconds, 600.0)
+
+    def test_worker_factory_rejects_invalid_article_json(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            (work / "articulo.json").write_text(
+                "{json inválido",
+                encoding="utf-8",
+            )
+            project = Project(
+                name="Proyecto con JSON inválido",
+                root=temporary,
+            )
+
+            with self.assertRaises(json.JSONDecodeError):
+                create_article_content_worker(
+                    project,
+                    settings_loader=lambda: {
+                        "openai_model": "modelo-configurado",
+                    },
+                )
 
     def test_composed_fake_provider_generates_article(self):
         service = create_article_content_service("fake", self.config)
