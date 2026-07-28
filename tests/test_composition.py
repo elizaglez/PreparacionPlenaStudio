@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.ai.config import AIProviderConfig
 from app.ai.errors import AIProviderConfigurationError
@@ -18,7 +18,10 @@ from app.composition import (
     create_article_content_service,
     create_generate_article_content_use_case,
 )
-from app.generation.article_generation_plan import ArticleGenerationPlan
+from app.generation.article_generation_plan import (
+    ArticleGenerationPlan,
+    ArticleGenerationPlanError,
+)
 from app.generation.content_generation_request import (
     ContentGenerationRequest,
     QuestionGenerationRequest,
@@ -127,7 +130,20 @@ class CompositionTests(unittest.TestCase):
         article = {
             "title": "Artículo",
             "introduction": "",
-            "sections": [],
+            "sections": [
+                {
+                    "number": 1,
+                    "question": "¿Pregunta válida?",
+                    "paragraph_numbers": [1],
+                    "paragraphs": [
+                        {
+                            "number": 1,
+                            "text": "Párrafo fuente",
+                        }
+                    ],
+                    "subtitle": "",
+                }
+            ],
         }
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -169,7 +185,20 @@ class CompositionTests(unittest.TestCase):
         article = {
             "title": "Artículo",
             "introduction": "",
-            "sections": [],
+            "sections": [
+                {
+                    "number": 1,
+                    "question": "¿Pregunta válida?",
+                    "paragraph_numbers": [1],
+                    "paragraphs": [
+                        {
+                            "number": 1,
+                            "text": "Párrafo fuente",
+                        }
+                    ],
+                    "subtitle": "",
+                }
+            ],
         }
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -210,6 +239,86 @@ class CompositionTests(unittest.TestCase):
                         "openai_model": "modelo-configurado",
                     },
                 )
+
+    def test_worker_factory_rejects_article_without_usable_questions(self):
+        invalid_articles = (
+            {
+                "title": "Artículo sin secciones",
+                "introduction": "",
+                "sections": [],
+            },
+            {
+                "title": "Artículo con pregunta vacía",
+                "introduction": "",
+                "sections": [
+                    {
+                        "number": 1,
+                        "question": "   ",
+                        "paragraph_numbers": [],
+                        "paragraphs": [],
+                        "subtitle": "",
+                    }
+                ],
+            },
+        )
+
+        for article in invalid_articles:
+            with self.subTest(title=article["title"]):
+                with tempfile.TemporaryDirectory() as temporary:
+                    work = Path(temporary) / "trabajo"
+                    work.mkdir()
+                    (work / "articulo.json").write_text(
+                        json.dumps(article, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    project = Project(
+                        name="Proyecto sin preguntas",
+                        root=temporary,
+                        status="articulo_estructurado",
+                        updated_at="2026-01-01T10:00:00-06:00",
+                        outputs={
+                            "article": "trabajo/articulo.json",
+                        },
+                    )
+                    previous_outputs = dict(project.outputs)
+                    settings_loader = Mock(
+                        return_value={
+                            "openai_model": "modelo-configurado",
+                        }
+                    )
+
+                    with (
+                        patch(
+                            "app.article_content_generator_worker."
+                            "ArticleContentGeneratorWorker"
+                        ) as worker_type,
+                        self.assertRaisesRegex(
+                            ArticleGenerationPlanError,
+                            "no contiene preguntas utilizables",
+                        ),
+                    ):
+                        create_article_content_worker(
+                            project,
+                            settings_loader=settings_loader,
+                        )
+
+                    settings_loader.assert_not_called()
+                    worker_type.assert_not_called()
+                    self.assertEqual(
+                        project.status,
+                        "articulo_estructurado",
+                    )
+                    self.assertEqual(
+                        project.updated_at,
+                        "2026-01-01T10:00:00-06:00",
+                    )
+                    self.assertEqual(project.outputs, previous_outputs)
+                    self.assertFalse(
+                        (
+                            work
+                            / "articulo_generado.json"
+                        ).exists()
+                    )
 
     def test_composed_fake_provider_generates_article(self):
         service = create_article_content_service("fake", self.config)

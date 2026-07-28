@@ -11,7 +11,10 @@ from app.ai.openai_client_factory import create_openai_client
 from app.ai.openai_client_port import OpenAIClientPort
 from app.ai.provider_factory import create_provider
 from app.article_content_service import ArticleContentService
-from app.generation.article_generation_plan import build_article_generation_plan
+from app.generation.article_generation_plan import (
+    ArticleGenerationPlanError,
+    build_article_generation_plan,
+)
 from app.models import Project
 from app.security.secret_loader import SecretLoader
 from app.storage import load_settings
@@ -92,6 +95,15 @@ def create_article_content_worker(
     article_path = Path(project.root) / "trabajo" / "articulo.json"
     article_data = json.loads(article_path.read_text(encoding="utf-8"))
     plan = build_article_generation_plan(article_data)
+    has_usable_question = any(
+        question.text.strip()
+        for section in plan.sections
+        for question in section.questions
+    )
+    if not has_usable_question:
+        raise ArticleGenerationPlanError(
+            "El artículo analizado no contiene preguntas utilizables."
+        )
 
     settings = settings_loader()
     config = AIProviderConfig(
