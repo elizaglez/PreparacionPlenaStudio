@@ -85,10 +85,10 @@ class ProjectWorkspaceTests(unittest.TestCase):
             ],
         )
 
-    def test_generate_button_keeps_legacy_text(self):
+    def test_generate_button_identifies_content_generation(self):
         self.assertEqual(
             self.workspace.generate.text(),
-            "2. GENERAR MASTER",
+            "2. GENERAR CONTENIDO",
         )
 
     def test_starts_composed_article_content_worker_after_confirmation(self):
@@ -98,7 +98,7 @@ class ProjectWorkspaceTests(unittest.TestCase):
             patch(
                 "app.pages.project_workspace.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Yes,
-            ),
+            ) as question,
             patch(
                 "app.pages.project_workspace.create_article_content_worker",
                 return_value=worker,
@@ -107,6 +107,12 @@ class ProjectWorkspaceTests(unittest.TestCase):
         ):
             self.workspace.generate_article_content()
 
+        question.assert_called_once_with(
+            self.workspace,
+            "Generar contenido",
+            "Se enviará una solicitud a OpenAI por cada pregunta detectada. "
+            "Esto puede generar costos de API. ¿Continuar?",
+        )
         worker_factory.assert_called_once_with(self.workspace.project)
         start_worker.assert_called_once_with(worker, "article_content")
 
@@ -356,8 +362,30 @@ class ProjectWorkspaceTests(unittest.TestCase):
         generated_exporter.assert_not_called()
         legacy_exporter.assert_called_once_with(self.workspace.project)
 
-    def test_legacy_generate_master_route_remains_available(self):
-        self.assertTrue(callable(self.workspace.generate_master))
+    def test_legacy_generate_master_route_remains_unchanged(self):
+        worker = Mock(name="master_worker")
+
+        with (
+            patch(
+                "app.pages.project_workspace.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as question,
+            patch(
+                "app.pages.project_workspace.MasterGeneratorWorker",
+                return_value=worker,
+            ) as worker_type,
+            patch.object(self.workspace, "_start_worker") as start_worker,
+        ):
+            self.workspace.generate_master()
+
+        question.assert_called_once_with(
+            self.workspace,
+            "Generar MASTER",
+            "Se enviará una solicitud a OpenAI por cada pregunta detectada. "
+            "Esto puede generar costos de API. ¿Continuar?",
+        )
+        worker_type.assert_called_once_with(self.workspace.project)
+        start_worker.assert_called_once_with(worker, "master")
 
 
 if __name__ == "__main__":

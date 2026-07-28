@@ -61,7 +61,7 @@ class ProjectWorkspace(QWidget):
         self.analyze.setEnabled(False)
         self.analyze.clicked.connect(self.process_sources)
 
-        self.generate = QPushButton("2. GENERAR MASTER")
+        self.generate = QPushButton("2. GENERAR CONTENIDO")
         self.generate.setEnabled(False)
         self.generate.clicked.connect(self.generate_article_content)
 
@@ -184,7 +184,7 @@ class ProjectWorkspace(QWidget):
         if self.project:
             answer = QMessageBox.question(
                 self,
-                "Generar MASTER",
+                "Generar contenido",
                 "Se enviará una solicitud a OpenAI por cada pregunta detectada. "
                 "Esto puede generar costos de API. ¿Continuar?",
             )
