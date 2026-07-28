@@ -24,6 +24,40 @@ class PromptLoaderTests(unittest.TestCase):
             with self.assertRaises(PromptRenderError):
                 loader.render("answer", {})
 
+    def test_renders_real_pipeline_stage_prompt(self):
+        prompt_dir = Path(__file__).resolve().parents[1] / "prompts"
+        loader = PromptLoader(prompt_dir)
+        values = {
+            "title": "Título real",
+            "introduction": "Introducción real",
+            "heading": "Subtítulo real",
+            "previous_question": "Pregunta anterior real",
+            "question": "¿Pregunta real?",
+            "next_question": "Pregunta siguiente real",
+            "paragraphs": "Párrafos reales",
+            "references": "Referencias reales",
+            "bible_context": "Contexto bíblico real",
+            "answer": "Respuesta real",
+            "scripture_explanation": "Explicación real",
+            "comparison": "Comparación real",
+            "application": "Aplicación real",
+            "stage_instruction": "Instrucción real",
+        }
+
+        rendered = loader.render("pipeline_stage", values)
+
+        for value in values.values():
+            self.assertIn(value, rendered)
+        self.assertNotRegex(rendered, r"\{[a-z_]+\}")
+        self.assertIn(
+            '{\n  "value": "texto de la etapa; puede ser vacío solo si no es útil",',
+            rendered,
+        )
+        self.assertIn(
+            '"source_notes": ["fuentes concretas usadas"]\n}',
+            rendered,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

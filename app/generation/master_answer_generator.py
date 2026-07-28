@@ -186,7 +186,11 @@ def _generate_one(
             input_text=input_text,
         )
         duration = time.perf_counter() - started
-        value = str(result.get("value", "")).strip()
+        raw_value = result.get(
+            "value",
+            result.get(stage.output_field, ""),
+        )
+        value = "" if raw_value is None else str(raw_value).strip()
         notes = result.get("source_notes", [])
         if not isinstance(notes, list):
             notes = []

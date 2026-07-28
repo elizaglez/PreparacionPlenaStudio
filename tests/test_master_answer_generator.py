@@ -147,6 +147,33 @@ class MasterAnswerGeneratorTests(unittest.TestCase):
             "Respuesta principal",
         )
 
+    def test_accepts_full_answer_contract_for_each_stage(self):
+        full_result = {
+            "answer": "Respuesta principal",
+            "scripture_explanation": "Explicación bíblica",
+            "comparison": "Comparación",
+            "application": "Aplicación",
+            "image_note": "Nota de imagen",
+            "source_notes": ["Fuente"],
+        }
+        editor = FakeEditor(
+            [dict(full_result) for _ in PIPELINE_STAGES]
+        )
+        log = FakeGenerationLog()
+        prompts = FakePromptLoader()
+
+        answer, _ = self.generate(editor, log, prompts)
+
+        self.assertEqual(answer.answer, "Respuesta principal")
+        self.assertEqual(
+            answer.scripture_explanation,
+            "Explicación bíblica",
+        )
+        self.assertEqual(answer.comparison, "Comparación")
+        self.assertEqual(answer.application, "Aplicación")
+        self.assertEqual(answer.image_note, "Nota de imagen")
+        self.assertEqual(answer.source_notes, ["Fuente"])
+
     def test_logs_operation_for_each_stage(self):
         editor = FakeEditor(self.stage_results())
         log = FakeGenerationLog()
