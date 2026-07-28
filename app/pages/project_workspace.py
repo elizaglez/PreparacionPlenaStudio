@@ -104,40 +104,71 @@ class ProjectWorkspace(QWidget):
         self.analyze.setEnabled(True)
         self._refresh_outputs()
 
-    def _refresh_outputs(self) -> None:
+    def _resolve_valid_output(
+        self,
+    ) -> tuple[str, GeneratedArticle | dict] | None:
         if not self.project:
-            return
-        work = Path(self.project.root) / "trabajo"
-        article_exists = (work / "articulo.json").is_file()
-        master_exists = (work / "master.json").is_file()
-        generated_article_exists = (work / "articulo_generado.json").is_file()
-        self.generate.setEnabled(article_exists and self.thread is None)
-        self.export.setEnabled(
-            (generated_article_exists or master_exists)
-            and self.thread is None
-        )
+            return None
 
-        if generated_article_exists:
+        work = Path(self.project.root) / "trabajo"
+        generated_article_path = work / "articulo_generado.json"
+        if generated_article_path.is_file():
             try:
                 generated_article = JsonGeneratedArticleRepository(
                     self.project.root
                 ).load()
-                self._show_generated_article(generated_article)
-                self.status.setText("Contenido del artículo generado.")
-                return
+                return "generated_article", generated_article
             except Exception:
                 pass
 
-        if master_exists:
+        master_path = work / "master.json"
+        if master_path.is_file():
             try:
                 master = json.loads(
-                    (work / "master.json").read_text(encoding="utf-8")
+                    master_path.read_text(encoding="utf-8")
                 )
-                self._show_master(master)
-                self.status.setText("MASTER generado, validado y listo para revisar.")
-                return
+                if isinstance(master, dict):
+                    return "master", master
             except Exception:
                 pass
+
+        return None
+
+    def _refresh_outputs(self) -> None:
+        if not self.project:
+            return
+
+        work = Path(self.project.root) / "trabajo"
+        article_exists = (work / "articulo.json").is_file()
+        generated_article_path = work / "articulo_generado.json"
+        master_path = work / "master.json"
+        resolved_output = self._resolve_valid_output()
+
+        self.generate.setEnabled(article_exists and self.thread is None)
+        self.export.setEnabled(
+            resolved_output is not None and self.thread is None
+        )
+
+        if resolved_output is not None:
+            output_kind, output_data = resolved_output
+            if output_kind == "generated_article":
+                self._show_generated_article(output_data)
+                self.status.setText("Contenido del artículo generado.")
+            else:
+                master = output_data
+                self._show_master(master)
+                self.status.setText("MASTER generado, validado y listo para revisar.")
+            return
+
+        if generated_article_path.is_file() or master_path.is_file():
+            self.export.setEnabled(False)
+            self.status.setText("No hay una salida válida para exportar.")
+            self.diagnostics.setPlainText(
+                "SALIDA NO DISPONIBLE\n\n"
+                "No se pudieron leer los archivos generados. "
+                "Puedes volver a generar el contenido."
+            )
+            return
 
         summary_path = work / "fuentes_resumen.json"
         if summary_path.is_file():
@@ -408,13 +439,19 @@ class ProjectWorkspace(QWidget):
     def export_word(self) -> None:
         if not self.project:
             return
-        try:
-            generated_article_path = (
-                Path(self.project.root)
-                / "trabajo"
-                / "articulo_generado.json"
+
+        resolved_output = self._resolve_valid_output()
+        if resolved_output is None:
+            QMessageBox.critical(
+                self,
+                "Error al exportar",
+                "No hay una salida válida para exportar.",
             )
-            if generated_article_path.is_file():
+            return
+
+        try:
+            output_kind, _ = resolved_output
+            if output_kind == "generated_article":
                 path = export_generated_article_to_docx(self.project)
             else:
                 path = export_master_to_docx(self.project)

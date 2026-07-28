@@ -303,7 +303,9 @@ class ProjectWorkspaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary) / "trabajo"
             work.mkdir()
-            (work / "articulo_generado.json").write_text("{}", encoding="utf-8")
+            JsonGeneratedArticleRepository(temporary).save(
+                self.generated_article()
+            )
             (work / "master.json").write_text("{}", encoding="utf-8")
             self.workspace.project = Project(
                 name="Proyecto con ambas salidas",
@@ -361,6 +363,159 @@ class ProjectWorkspaceTests(unittest.TestCase):
 
         generated_exporter.assert_not_called()
         legacy_exporter.assert_called_once_with(self.workspace.project)
+
+    def test_invalid_generated_article_falls_back_to_valid_master(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            generated_path = work / "articulo_generado.json"
+            generated_path.write_text(
+                "{json inválido",
+                encoding="utf-8",
+            )
+            master_path = work / "master.json"
+            master_path.write_text(
+                json.dumps(
+                    {
+                        "title": "MASTER recuperable",
+                        "model": "modelo-legacy",
+                        "answers": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.workspace.project = Project(
+                name="Proyecto con fallback",
+                root=temporary,
+            )
+
+            self.workspace._refresh_outputs()
+
+            self.assertTrue(self.workspace.export.isEnabled())
+            self.assertEqual(
+                self.workspace.status.text(),
+                "MASTER generado, validado y listo para revisar.",
+            )
+            diagnostics = self.workspace.diagnostics.toPlainText()
+            self.assertIn("MASTER recuperable", diagnostics)
+            self.assertTrue(generated_path.is_file())
+            self.assertTrue(master_path.is_file())
+
+    def test_exports_valid_master_when_generated_article_is_invalid(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            generated_path = work / "articulo_generado.json"
+            generated_path.write_text(
+                "{json inválido",
+                encoding="utf-8",
+            )
+            master_path = work / "master.json"
+            master_path.write_text(
+                json.dumps(
+                    {
+                        "title": "MASTER válido",
+                        "answers": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.workspace.project = Project(
+                name="Proyecto con fallback",
+                root=temporary,
+            )
+            legacy_output = Path(temporary) / "salidas" / "MASTER.docx"
+
+            with (
+                patch(
+                    "app.pages.project_workspace."
+                    "export_generated_article_to_docx",
+                ) as generated_exporter,
+                patch(
+                    "app.pages.project_workspace.export_master_to_docx",
+                    return_value=legacy_output,
+                ) as legacy_exporter,
+                patch.object(self.workspace, "_refresh_outputs"),
+                patch(
+                    "app.pages.project_workspace.QMessageBox.information",
+                ),
+            ):
+                self.workspace.export_word()
+
+            generated_exporter.assert_not_called()
+            legacy_exporter.assert_called_once_with(self.workspace.project)
+            self.assertTrue(generated_path.is_file())
+            self.assertTrue(master_path.is_file())
+
+    def test_disables_export_when_no_generated_output_is_valid(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            generated_path = work / "articulo_generado.json"
+            generated_path.write_text(
+                "{json inválido",
+                encoding="utf-8",
+            )
+            master_path = work / "master.json"
+            master_path.write_text(
+                "[\"MASTER inválido\"]",
+                encoding="utf-8",
+            )
+            self.workspace.project = Project(
+                name="Proyecto sin salida válida",
+                root=temporary,
+            )
+
+            self.workspace._refresh_outputs()
+
+            self.assertFalse(self.workspace.export.isEnabled())
+            self.assertEqual(
+                self.workspace.status.text(),
+                "No hay una salida válida para exportar.",
+            )
+            self.assertIn(
+                "No se pudieron leer los archivos generados.",
+                self.workspace.diagnostics.toPlainText(),
+            )
+            self.assertTrue(generated_path.is_file())
+            self.assertTrue(master_path.is_file())
+
+    def test_reports_safe_error_when_export_has_no_valid_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            generated_path = work / "articulo_generado.json"
+            generated_path.write_text(
+                "{detalle interno inválido",
+                encoding="utf-8",
+            )
+            self.workspace.project = Project(
+                name="Proyecto sin salida válida",
+                root=temporary,
+            )
+
+            with (
+                patch(
+                    "app.pages.project_workspace."
+                    "export_generated_article_to_docx",
+                ) as generated_exporter,
+                patch(
+                    "app.pages.project_workspace.export_master_to_docx",
+                ) as legacy_exporter,
+                patch(
+                    "app.pages.project_workspace.QMessageBox.critical",
+                ) as critical,
+            ):
+                self.workspace.export_word()
+
+            generated_exporter.assert_not_called()
+            legacy_exporter.assert_not_called()
+            critical.assert_called_once_with(
+                self.workspace,
+                "Error al exportar",
+                "No hay una salida válida para exportar.",
+            )
+            self.assertTrue(generated_path.is_file())
 
     def test_legacy_generate_master_route_remains_unchanged(self):
         worker = Mock(name="master_worker")
