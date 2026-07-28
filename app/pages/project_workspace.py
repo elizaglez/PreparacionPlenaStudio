@@ -15,8 +15,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.composition import create_article_content_worker
 from app.dialogs import ProcessingDialog
 from app.exporters import export_master_to_docx
+from app.generation.generated_article import GeneratedArticle
+from app.persistence.generated_article_repository import (
+    JsonGeneratedArticleRepository,
+)
 from app.workers import MasterGeneratorWorker, SourceProcessorWorker
 
 
@@ -55,7 +60,7 @@ class ProjectWorkspace(QWidget):
 
         self.generate = QPushButton("2. GENERAR MASTER")
         self.generate.setEnabled(False)
-        self.generate.clicked.connect(self.generate_master)
+        self.generate.clicked.connect(self.generate_article_content)
 
         self.export = QPushButton("3. EXPORTAR A WORD")
         self.export.setEnabled(False)
@@ -102,8 +107,20 @@ class ProjectWorkspace(QWidget):
         work = Path(self.project.root) / "trabajo"
         article_exists = (work / "articulo.json").is_file()
         master_exists = (work / "master.json").is_file()
+        generated_article_exists = (work / "articulo_generado.json").is_file()
         self.generate.setEnabled(article_exists and self.thread is None)
         self.export.setEnabled(master_exists and self.thread is None)
+
+        if generated_article_exists:
+            try:
+                generated_article = JsonGeneratedArticleRepository(
+                    self.project.root
+                ).load()
+                self._show_generated_article(generated_article)
+                self.status.setText("Contenido del artículo generado.")
+                return
+            except Exception:
+                pass
 
         if master_exists:
             try:
@@ -157,6 +174,26 @@ class ProjectWorkspace(QWidget):
                 "analyze",
             )
 
+    def generate_article_content(self) -> None:
+        if self.project:
+            answer = QMessageBox.question(
+                self,
+                "Generar MASTER",
+                "Se enviará una solicitud a OpenAI por cada pregunta detectada. "
+                "Esto puede generar costos de API. ¿Continuar?",
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                try:
+                    worker = create_article_content_worker(self.project)
+                except Exception:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        "No se pudo preparar la generación del artículo.",
+                    )
+                    return
+                self._start_worker(worker, "article_content")
+
     def generate_master(self) -> None:
         if self.project:
             answer = QMessageBox.question(
@@ -171,13 +208,19 @@ class ProjectWorkspace(QWidget):
                     "master",
                 )
 
-    def _operation_finished(self, result: dict) -> None:
+    def _operation_finished(self, result: object) -> None:
         if self.current_operation == "analyze":
             self.status.setText("Artículo analizado y estructurado.")
             self._show_source_summary(result)
             message = (
                 "Listo. Se creó trabajo/articulo.json con preguntas, "
                 "párrafos y referencias bíblicas."
+            )
+        elif self.current_operation == "article_content":
+            self.status.setText("Contenido del artículo generado.")
+            self._show_generated_article(result)
+            message = (
+                "Listo. Se creó trabajo/articulo_generado.json."
             )
         else:
             self.status.setText("MASTER generado, validado y listo para revisar.")
@@ -222,6 +265,35 @@ class ProjectWorkspace(QWidget):
         if warnings:
             lines.extend(["", "Advertencias:"])
             lines.extend(f"• {warning}" for warning in warnings)
+        self.diagnostics.setPlainText("\n".join(lines))
+
+    def _show_generated_article(
+        self,
+        article: GeneratedArticle,
+    ) -> None:
+        question_count = len(article.introduction.questions) + sum(
+            len(section.questions)
+            for section in article.sections
+        )
+        answered_count = sum(
+            1
+            for question in article.introduction.questions
+            if question.answer.strip()
+        ) + sum(
+            1
+            for section in article.sections
+            for question in section.questions
+            if question.answer.strip()
+        )
+        lines = [
+            "CONTENIDO GENERADO",
+            "",
+            article.title or "Sin título",
+            f"Preguntas: {question_count}",
+            f"Respuestas generadas: {answered_count}",
+            "",
+            "Archivo: trabajo/articulo_generado.json",
+        ]
         self.diagnostics.setPlainText("\n".join(lines))
 
     def _load_and_show_master(self) -> None:
