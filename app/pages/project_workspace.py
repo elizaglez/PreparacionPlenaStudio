@@ -21,6 +21,9 @@ from app.exporters import (
     export_generated_article_to_docx,
     export_master_to_docx,
 )
+from app.generation.article_generation_plan import (
+    ArticleGenerationPlanError,
+)
 from app.generation.generated_article import GeneratedArticle
 from app.persistence.generated_article_repository import (
     JsonGeneratedArticleRepository,
@@ -241,6 +244,15 @@ class ProjectWorkspace(QWidget):
             if answer == QMessageBox.StandardButton.Yes:
                 try:
                     worker = create_article_content_worker(self.project)
+                except ArticleGenerationPlanError:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        "No se detectaron preguntas utilizables. "
+                        "Revisa las fuentes y vuelve a analizar el artículo "
+                        "antes de generar contenido.",
+                    )
+                    return
                 except Exception:
                     QMessageBox.critical(
                         self,

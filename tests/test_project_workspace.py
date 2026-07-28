@@ -9,6 +9,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app.generation.article_generation_plan import (
+    ArticleGenerationPlanError,
+)
 from app.generation.generated_article import (
     GeneratedArticle,
     GeneratedBox,
@@ -260,6 +263,45 @@ class ProjectWorkspaceTests(unittest.TestCase):
             )
             worker_factory.assert_not_called()
             start_worker.assert_not_called()
+
+    def test_reports_actionable_error_for_empty_generation_plan(self):
+        internal_detail = "detalle interno que no debe mostrarse"
+
+        with (
+            patch(
+                "app.pages.project_workspace.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "app.pages.project_workspace."
+                "create_article_content_worker",
+                side_effect=ArticleGenerationPlanError(
+                    internal_detail
+                ),
+            ) as worker_factory,
+            patch(
+                "app.pages.project_workspace.QMessageBox.critical",
+            ) as critical,
+            patch.object(
+                self.workspace,
+                "_start_worker",
+            ) as start_worker,
+        ):
+            self.workspace.generate_article_content()
+
+        worker_factory.assert_called_once_with(self.workspace.project)
+        start_worker.assert_not_called()
+        critical.assert_called_once_with(
+            self.workspace,
+            "Error",
+            "No se detectaron preguntas utilizables. "
+            "Revisa las fuentes y vuelve a analizar el artículo "
+            "antes de generar contenido.",
+        )
+        self.assertNotIn(
+            internal_detail,
+            critical.call_args.args[2],
+        )
 
     def test_reports_worker_composition_failure_without_starting_thread(self):
         with (
