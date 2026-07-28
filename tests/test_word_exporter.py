@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from docx import Document
 
@@ -83,6 +84,9 @@ class GeneratedArticleWordExporterTests(unittest.TestCase):
             )
             self.assertTrue(output.is_file())
             self.assertFalse(
+                output.with_suffix(output.suffix + ".tmp").exists()
+            )
+            self.assertFalse(
                 (Path(temporary) / "trabajo" / "master.json").exists()
             )
 
@@ -111,6 +115,114 @@ class GeneratedArticleWordExporterTests(unittest.TestCase):
         for expected in expected_texts:
             with self.subTest(text=expected):
                 self.assertIn(expected, text)
+
+    def test_successful_export_replaces_previous_word(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Project(
+                name="Proyecto con Word anterior",
+                root=temporary,
+            )
+            JsonGeneratedArticleRepository(temporary).save(self.article())
+            output = (
+                Path(temporary)
+                / "salidas"
+                / "CONTENIDO_GENERADO.docx"
+            )
+            output.parent.mkdir()
+            previous_content = b"documento-anterior"
+            output.write_bytes(previous_content)
+
+            result = export_generated_article_to_docx(project)
+
+            self.assertEqual(result, output)
+            self.assertTrue(output.is_file())
+            self.assertNotEqual(output.read_bytes(), previous_content)
+            self.assertFalse(
+                output.with_suffix(output.suffix + ".tmp").exists()
+            )
+
+    def test_save_failure_preserves_previous_word_and_removes_temporary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Project(
+                name="Proyecto con fallo de escritura",
+                root=temporary,
+            )
+            JsonGeneratedArticleRepository(temporary).save(self.article())
+            output = (
+                Path(temporary)
+                / "salidas"
+                / "CONTENIDO_GENERADO.docx"
+            )
+            output.parent.mkdir()
+            previous_content = b"documento-anterior"
+            output.write_bytes(previous_content)
+            temporary_output = output.with_suffix(output.suffix + ".tmp")
+
+            with (
+                patch(
+                    "docx.document.Document.save",
+                    side_effect=OSError(
+                        "detalle interno C:/ruta/sensible"
+                    ),
+                ),
+                self.assertRaises(WordExportError) as raised,
+            ):
+                export_generated_article_to_docx(project)
+
+            self.assertEqual(output.read_bytes(), previous_content)
+            self.assertFalse(temporary_output.exists())
+            self.assertEqual(
+                str(raised.exception),
+                "No se pudo guardar CONTENIDO_GENERADO.docx. "
+                "Cierra el documento si está abierto y vuelve a intentarlo.",
+            )
+            self.assertNotIn(
+                "C:/ruta/sensible",
+                str(raised.exception),
+            )
+
+    def test_replace_failure_preserves_previous_word_and_removes_temporary(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Project(
+                name="Proyecto con Word abierto",
+                root=temporary,
+            )
+            JsonGeneratedArticleRepository(temporary).save(self.article())
+            output = (
+                Path(temporary)
+                / "salidas"
+                / "CONTENIDO_GENERADO.docx"
+            )
+            output.parent.mkdir()
+            previous_content = b"documento-anterior"
+            output.write_bytes(previous_content)
+            temporary_output = output.with_suffix(output.suffix + ".tmp")
+
+            with (
+                patch.object(
+                    Path,
+                    "replace",
+                    side_effect=PermissionError(
+                        "detalle interno del archivo bloqueado"
+                    ),
+                ),
+                self.assertRaises(WordExportError) as raised,
+            ):
+                export_generated_article_to_docx(project)
+
+            self.assertEqual(output.read_bytes(), previous_content)
+            self.assertFalse(temporary_output.exists())
+            self.assertEqual(
+                str(raised.exception),
+                "No se pudo guardar CONTENIDO_GENERADO.docx. "
+                "Cierra el documento si está abierto y vuelve a intentarlo.",
+            )
+            self.assertNotIn(
+                "detalle interno",
+                str(raised.exception),
+            )
 
     def test_does_not_modify_existing_master(self):
         with tempfile.TemporaryDirectory() as temporary:

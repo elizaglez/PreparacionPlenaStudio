@@ -99,6 +99,9 @@ def export_generated_article_to_docx(project: Project) -> Path:
     output_dir = Path(project.root) / "salidas"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "CONTENIDO_GENERADO.docx"
+    temporary_output_path = output_path.with_suffix(
+        output_path.suffix + ".tmp"
+    )
 
     document = Document()
     styles = document.styles
@@ -150,5 +153,18 @@ def export_generated_article_to_docx(project: Project) -> Path:
         for question in article.review_questions:
             document.add_paragraph(question, style="List Bullet")
 
-    document.save(output_path)
+    try:
+        temporary_output_path.unlink(missing_ok=True)
+        document.save(temporary_output_path)
+        temporary_output_path.replace(output_path)
+    except Exception as exc:
+        try:
+            temporary_output_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise WordExportError(
+            "No se pudo guardar CONTENIDO_GENERADO.docx. "
+            "Cierra el documento si está abierto y vuelve a intentarlo."
+        ) from exc
+
     return output_path
