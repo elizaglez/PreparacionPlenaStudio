@@ -123,6 +123,48 @@ class CompositionTests(unittest.TestCase):
             "¿Pregunta del proyecto?",
         )
 
+    def test_worker_composition_passes_current_project_to_repository(self):
+        article = {
+            "title": "Artículo",
+            "introduction": "",
+            "sections": [],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary) / "trabajo"
+            work.mkdir()
+            (work / "articulo.json").write_text(
+                json.dumps(article),
+                encoding="utf-8",
+            )
+            project = Project(
+                name="Proyecto actual",
+                root=temporary,
+            )
+
+            with patch(
+                "app.composition.create_generate_article_content_use_case"
+            ) as use_case_factory:
+                worker = create_article_content_worker(
+                    project,
+                    settings_loader=lambda: {
+                        "openai_model": "modelo-configurado",
+                    },
+                )
+
+                worker._use_case_factory(
+                    "fake",
+                    self.config,
+                    temporary,
+                )
+
+        use_case_factory.assert_called_once_with(
+            "fake",
+            self.config,
+            temporary,
+            project=project,
+        )
+
     def test_worker_factory_uses_current_openai_default_timeout(self):
         article = {
             "title": "Artículo",

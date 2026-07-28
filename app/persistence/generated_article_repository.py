@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.generation.generated_article import (
     GeneratedQuestion,
     GeneratedSection,
 )
+from app.models import Project
 from app.persistence.project_repository import load_project, save_project
 from app.storage import save_json
 
@@ -38,21 +40,48 @@ class GeneratedArticleRepository(ABC):
 class JsonGeneratedArticleRepository(GeneratedArticleRepository):
     """Persist generated articles as project-local JSON."""
 
-    def __init__(self, project_root: str | Path) -> None:
+    def __init__(
+        self,
+        project_root: str | Path,
+        *,
+        project: Project | None = None,
+    ) -> None:
         self.project_root = Path(project_root)
         self.path = self.project_root / "trabajo" / "articulo_generado.json"
+        self.project = project
 
     def save(self, article: GeneratedArticle) -> None:
         data = {"schema_version": GENERATED_ARTICLE_SCHEMA_VERSION}
         data.update(article.to_dict())
         save_json(self.path, data)
         project_path = self.project_root / "proyecto.json"
-        if project_path.is_file():
+
+        project = self.project
+        if project is None and project_path.is_file():
             project = load_project(project_path)
-            project.outputs["generated_article"] = (
-                "trabajo/articulo_generado.json"
-            )
+        if project is None:
+            return
+
+        previous_status = project.status
+        previous_updated_at = project.updated_at
+        previous_outputs = dict(project.outputs)
+
+        project.status = "contenido_generado"
+        project.updated_at = datetime.now().astimezone().isoformat(
+            timespec="seconds"
+        )
+        project.outputs["generated_article"] = (
+            "trabajo/articulo_generado.json"
+        )
+
+        try:
             save_project(project)
+        except Exception:
+            project.status = previous_status
+            project.updated_at = previous_updated_at
+            project.outputs.clear()
+            project.outputs.update(previous_outputs)
+            raise
 
     def load(self) -> GeneratedArticle:
         try:

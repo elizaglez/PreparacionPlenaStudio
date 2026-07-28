@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from functools import partial
 from pathlib import Path
 
 from app.ai.config import AIProviderConfig
@@ -57,6 +58,7 @@ def create_generate_article_content_use_case(
     *,
     openai_client: OpenAIClientPort | None = None,
     openai_api_key: str | None = None,
+    project: Project | None = None,
 ):
     """Compose generation and project-local persistence."""
     from app.persistence.generated_article_repository import (
@@ -70,7 +72,10 @@ def create_generate_article_content_use_case(
         openai_client=openai_client,
         openai_api_key=openai_api_key,
     )
-    repository = JsonGeneratedArticleRepository(project_root)
+    repository = JsonGeneratedArticleRepository(
+        project_root,
+        project=project,
+    )
     return GenerateArticleContentUseCase(service, repository)
 
 
@@ -99,9 +104,14 @@ def create_article_content_worker(
         ),
     )
 
+    use_case_factory = partial(
+        create_generate_article_content_use_case,
+        project=project,
+    )
     return ArticleContentGeneratorWorker(
         plan,
         "openai",
         config,
         project.root,
+        use_case_factory=use_case_factory,
     )
