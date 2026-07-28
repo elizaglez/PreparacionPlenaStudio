@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -101,6 +102,7 @@ class SettingsPage(QWidget):
             if not updated:
                 output.append(f"OPENAI_API_KEY={key}")
             env_path.write_text("\n".join(output).strip() + "\n", encoding="utf-8")
+            os.environ["OPENAI_API_KEY"] = key
             self.api_key.clear()
 
         QMessageBox.information(
