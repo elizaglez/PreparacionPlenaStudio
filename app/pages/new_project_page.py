@@ -5,7 +5,7 @@ from app.storage import load_settings
 from app.project_service import create_project, ProjectError
 
 class NewProjectPage(QWidget):
-    project_created = Signal(dict)
+    project_created = Signal(object)
     def __init__(self, parent=None):
         super().__init__(parent)
         title = QLabel("Nuevo proyecto")
